@@ -361,14 +361,27 @@
   .contact-form input:focus, .contact-form select:focus, .contact-form textarea:focus{
     outline:2px solid var(--mustard); border-color:var(--mustard);
   }
+  .contact-form input[type="date"]{ color-scheme:dark; }
   .contact-form button{ margin-top:22px; width:100%; justify-content:center; }
   .form-note{ font-size:0.78rem; color:#9FC2A4; margin-top:10px; }
 
   /* ---------- FOOTER ---------- */
-  footer{ background:var(--charcoal); border-top:1px solid rgba(231,233,226,0.12); padding:26px 0; }
-  .footer-inner{ display:flex; flex-wrap:wrap; gap:14px; justify-content:space-between; align-items:center; color:#8B968A; font-size:0.82rem; }
-  .footer-inner a{ color:#B9C6B4; }
-  .footer-inner a:hover{ color:var(--mustard); }
+  footer{ background:var(--charcoal); border-top:1px solid rgba(231,233,226,0.12); padding:40px 0 32px; }
+  .footer-grid{ display:flex; flex-direction:column; gap:26px; }
+  @media(min-width:760px){ .footer-grid{ flex-direction:row; justify-content:space-between; align-items:center; } }
+  .footer-brand{ display:flex; align-items:center; gap:14px; }
+  .footer-mark{ width:38px; height:38px; flex-shrink:0; }
+  .footer-brand p{ font-size:0.8rem; color:#8B968A; line-height:1.55; max-width:340px; }
+  .footer-links{ display:flex; flex-wrap:wrap; gap:10px; }
+  .footer-btn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:9px 16px; border-radius:20px;
+    border:1px solid rgba(231,233,226,0.18);
+    color:#DCE2D6; font-size:0.82rem; font-weight:500;
+    transition:border-color .2s ease, background .2s ease, color .2s ease, transform .2s ease;
+  }
+  .footer-btn svg{ width:15px; height:15px; flex-shrink:0; }
+  .footer-btn:hover{ border-color:var(--mustard); background:rgba(217,164,65,0.1); color:var(--mustard); transform:translateY(-2px); }
 </style>
 </head>
 <body>
@@ -414,7 +427,7 @@
     <p class="lede">Rent a scooty or bike for the day, or let one of our local guides take you to the waterfalls, root bridges and lakes outsiders never find on their own.</p>
     <div class="hero-ctas">
       <a href="#fleet" class="btn btn-primary">See the fleet</a>
-      <a href="https://wa.me/919800000000" class="btn btn-ghost">WhatsApp us</a>
+      <a href="https://wa.me/918299044462" class="btn btn-ghost">WhatsApp us</a>
     </div>
   </div>
 
@@ -652,7 +665,7 @@
           </div>
           <div class="row">
             <svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M4 5h4l2 5-2.5 1.5a11 11 0 0 0 5 5L14 14l5 2v4a2 2 0 0 1-2 2C9 22 2 15 2 7a2 2 0 0 1 2-2Z" stroke="#D9A441" stroke-width="2"/></svg>
-            <div><b>Phone / WhatsApp</b><span>+91 98000 00000</span></div>
+            <div><b>Phone / WhatsApp</b><span>+91 82990 44462</span></div>
           </div>
           <div class="row">
             <svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="2" stroke="#D9A441" stroke-width="2"/><path d="M3 9h18M8 2v4M16 2v4" stroke="#D9A441" stroke-width="2" stroke-linecap="round"/></svg>
@@ -669,10 +682,10 @@
         </div>
       </div>
 
-      <form class="contact-form reveal" onsubmit="event.preventDefault(); this.querySelector('.form-note').textContent='Thanks — replace this form with a real booking system before launch.';">
+      <form class="contact-form reveal" onsubmit="return submitBookingToWhatsApp(event);">
         <p class="eyebrow on-dark">Quick booking request</p>
         <label for="name">Your name</label>
-        <input id="name" type="text" placeholder="e.g. Riya Sharma" required>
+        <input id="name" type="text" placeholder="e.g. Riya Sharma">
         <label for="vehicle">Vehicle</label>
         <select id="vehicle">
           <option>Activa / Jupiter (scooty)</option>
@@ -681,8 +694,10 @@
           <option>Royal Enfield Classic 350</option>
           <option>Guided tour package</option>
         </select>
-        <label for="dates">Dates</label>
-        <input id="dates" type="text" placeholder="e.g. 22–25 Nov">
+        <label for="pickup-date">Pickup date</label>
+        <input id="pickup-date" type="date">
+        <label for="return-date">Return date</label>
+        <input id="return-date" type="date">
         <label for="notes">Notes</label>
         <textarea id="notes" rows="3" placeholder="Anything we should know?"></textarea>
         <button type="submit" class="btn btn-primary">Send request</button>
@@ -693,12 +708,97 @@
 </section>
 
 <footer>
-  <div class="wrap footer-inner">
-    <span>© 2026 Cloud Trail Rentals, Shillong. All rides at your own risk — helmets mandatory.</span>
-    <span><a href="https://wa.me/919800000000">WhatsApp</a> · <a href="https://instagram.com/_cloudtrails">Instagram @_cloudtrails</a> · <a href="#contact">Directions</a> · <a href="#pricing">Pricing</a></span>
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <svg class="footer-mark" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="34" cy="18" r="5" fill="#D9A441"/>
+        <path d="M8 44 L24 20 L32 32 L40 18 L52 44 Z" fill="#5C7A5E"/>
+        <path d="M12 44 L26 24 L34 34 L42 22 L50 44 Z" fill="#24402F"/>
+      </svg>
+      <p>© 2026 Cloud Trail Rentals, Shillong.<br>All rides at your own risk — helmets mandatory.</p>
+    </div>
+    <div class="footer-links">
+      <a class="footer-btn" href="https://wa.me/918299044462" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 5h4l2 5-2.5 1.5a11 11 0 0 0 5 5L14 14l5 2v4a2 2 0 0 1-2 2C9 22 2 15 2 7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2"/></svg>
+        WhatsApp
+      </a>
+      <a class="footer-btn" href="https://instagram.com/_cloudtrails" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>
+        @_cloudtrails
+      </a>
+      <a class="footer-btn" href="https://www.google.com/maps/search/?api=1&query=Police+Bazar+Shillong+Meghalaya+793001" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s7-7.2 7-12a7 7 0 1 0-14 0c0 4.8 7 12 7 12Z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9" r="2.5" stroke="currentColor" stroke-width="2"/></svg>
+        Directions
+      </a>
+      <a class="footer-btn" href="#pricing">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M20 12 12 20 4 12V4h8Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/></svg>
+        Pricing
+      </a>
+    </div>
   </div>
 </footer>
 
+<script>
+  var WHATSAPP_NUMBER = '918299044462'; // TODO: replace with your real WhatsApp business number (country code, no + or spaces)
+
+  function formatDateNice(isoStr){
+    if(!isoStr){ return ''; }
+    var d = new Date(isoStr + 'T00:00:00');
+    if(isNaN(d.getTime())){ return isoStr; }
+    return d.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+  }
+
+  function submitBookingToWhatsApp(event){
+    event.preventDefault();
+    var form = event.target;
+    var name = form.querySelector('#name').value.trim();
+    var vehicle = form.querySelector('#vehicle').value;
+    var pickupDate = form.querySelector('#pickup-date').value;
+    var returnDate = form.querySelector('#return-date').value;
+    var notes = form.querySelector('#notes').value.trim();
+    var note = form.querySelector('.form-note');
+
+    if(!name){
+      note.textContent = 'Please add your name so we know who\'s booking.';
+      form.querySelector('#name').focus();
+      return false;
+    }
+
+    var lines = [
+      'Hi Cloud Trails! I\'d like to book a ride.',
+      'Name: ' + name,
+      'Vehicle: ' + vehicle
+    ];
+    if(pickupDate){ lines.push('Pickup: ' + formatDateNice(pickupDate)); }
+    if(returnDate){ lines.push('Return: ' + formatDateNice(returnDate)); }
+    if(notes){ lines.push('Notes: ' + notes); }
+
+    var message = lines.join('\n');
+    var url = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(message);
+    var opened = window.open(url, '_blank', 'noopener');
+
+    if(opened){
+      note.textContent = 'Opening WhatsApp with your details filled in — just hit send there and we\'ll reply within the hour.';
+    } else {
+      note.innerHTML = 'Your browser blocked the popup. <a href="' + url + '" target="_blank" rel="noopener" style="color:#EEBB5C; text-decoration:underline;">Tap here to open WhatsApp</a> with your details already filled in.';
+    }
+    return false;
+  }
+
+  (function setDateMins(){
+    var today = new Date().toISOString().split('T')[0];
+    var pickup = document.getElementById('pickup-date');
+    var ret = document.getElementById('return-date');
+    if(pickup){ pickup.min = today; }
+    if(ret){ ret.min = today; }
+    if(pickup && ret){
+      pickup.addEventListener('change', function(){
+        ret.min = pickup.value || today;
+        if(ret.value && ret.value < pickup.value){ ret.value = pickup.value; }
+      });
+    }
+  })();
+</script>
 <script>
 (function(){
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
