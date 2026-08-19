@@ -1,0 +1,37 @@
+<svg viewBox="0 0 400 160" width="400" height="160" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Cloud Trails</title>
+<desc>Cloud Trails logo, compact version — a centered pine green mountain range with drifting clouds in the valley, a winding trail down to the base, and the wordmark Cloud Trails in Bebas Neue below.</desc>
+
+<!-- sun, peeking low behind the back range -->
+<circle cx="214" cy="60" r="13" fill="#D9A441"/>
+
+<!-- back range, lighter for depth -->
+<path d="M 78 116 L 143 56 L 178 88 L 220 49 L 285 116 Z" fill="#5C7A5E"/>
+
+<!-- front range -->
+<path d="M 103 116 L 160 67 L 196 98 L 239 63 L 296 116 Z" fill="#24402F"/>
+
+<!-- clouds drifting in the valley -->
+<g fill="#E7E9E2" opacity="0.9">
+<ellipse cx="158" cy="79" rx="10" ry="5"/>
+<ellipse cx="167" cy="76" rx="8" ry="4"/>
+<ellipse cx="149" cy="82" rx="7" ry="3.5"/>
+</g>
+<g fill="#E7E9E2" opacity="0.85">
+<ellipse cx="198" cy="86" rx="11" ry="5.5"/>
+<ellipse cx="208" cy="83" rx="8" ry="4"/>
+<ellipse cx="188" cy="89" rx="7" ry="3.5"/>
+</g>
+
+<!-- ground line -->
+<line x1="65" y1="117" x2="305" y2="117" stroke="#1B3024" stroke-width="1.5"/>
+
+<!-- winding trail down from the valley -->
+<path d="M 196 98 Q 188 107 197 113 Q 206 119 197 124"
+fill="none" stroke="#D9A441" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="1.2 6"/>
+
+<!-- wordmark -->
+<text x="200" y="150" text-anchor="middle" font-family="'Bebas Neue', sans-serif" font-size="31" letter-spacing="0.02em" fill="#E7E9E2">CLOUD TRAILS</text>
+</svg>
+
+
