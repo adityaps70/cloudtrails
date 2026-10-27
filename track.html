@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0A100D">
+<meta name="robots" content="noindex">
+<title>My booking | Cloud Trails</title>
+<link rel="icon" type="image/svg+xml" href="images/logo-mark.svg">
+<link rel="stylesheet" href="css/site.css">
+<link rel="stylesheet" href="css/book.css">
+</head>
+<body class="grain">
+<header class="bk-top">
+  <a href="index.html" class="bk-brand" aria-label="Cloud Trails home"><img src="images/logo-mark.svg" alt="Cloud Trails" width="400" height="160"></a>
+  <nav class="bk-top-links">
+    <a href="index.html#fleet">Fleet</a>
+    <a href="book.html">Book</a>
+    <a class="bk-wa" id="top-wa" href="https://wa.me/918730883206" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+  </nav>
+</header>
+
+<main class="bk-main" style="max-width: 860px">
+  <section id="lookup" hidden>
+    <p class="eyebrow">Your bookings</p>
+    <h1 class="font-display" style="font-weight:900;font-size:clamp(2.4rem,6vw,4rem);line-height:.95;margin:.8rem 0 0">Find your <span class="font-serif-accent accent">booking</span></h1>
+    <p class="lede">Open the status link you got after booking. Bookings made on this phone or computer are listed below.</p>
+    <div class="tr-card tr-list" id="saved"></div>
+    <p class="hint">Lost your link? <a id="lost-wa" href="https://wa.me/918730883206?text=Hi%20Cloud%20Trails!%20I%20need%20my%20booking%20status%20link." target="_blank" rel="noopener noreferrer">Message us on WhatsApp</a> with your booking reference.</p>
+    <p style="margin-top:2rem"><a class="btn-sharp btn-sharp-solid" href="book.html">Book a ride</a></p>
+  </section>
+
+  <section id="status" hidden>
+    <p class="eyebrow">Booking <span id="t-ref"></span></p>
+    <h1 class="font-display" id="t-title" style="font-weight:900;font-size:clamp(2.2rem,6vw,3.8rem);line-height:.95;margin:.8rem 0 1rem"></h1>
+    <span class="tr-status" id="t-status"></span>
+    <div class="tr-msg" id="t-msg" hidden></div>
+
+    <div class="tr-checks" id="t-checks"></div>
+
+    <div class="tr-card" id="t-upload" hidden>
+      <h2 class="step-title font-display" style="margin-top:0">We need a few things from you</h2>
+      <div id="t-pay" hidden>
+        <div class="pay">
+          <div class="pay-qr"><div id="qr" class="qr"></div><p class="qr-note" id="qr-note">Scan with any UPI app</p></div>
+          <div class="pay-info">
+            <p class="pay-amount">Pay <b id="pay-amount"></b></p>
+            <p class="upi-id" id="upi-id-row" hidden>UPI ID <code id="upi-id"></code></p>
+            <a class="btn-sharp upi-btn" id="upi-link" href="#" hidden>Pay with a UPI app</a>
+            <div class="fld"><label for="upi_utr">UPI reference / UTR no.</label><input class="field" id="upi_utr" inputmode="numeric" placeholder="e.g. 432198765432"></div>
+          </div>
+        </div>
+      </div>
+      <div class="uploads" id="t-files" style="margin-top:1.2rem"></div>
+      <p class="err big" id="t-up-err"></p>
+      <button type="button" class="btn-sharp btn-sharp-solid" id="t-send" style="margin-top:1rem">Upload</button>
+    </div>
+
+    <div class="tr-card">
+      <div class="review" id="t-details" style="border:0;padding:0;background:none"></div>
+    </div>
+
+    <div class="tr-card">
+      <p class="eyebrow" style="margin-bottom:.8rem">Updates</p>
+      <ul class="timeline" id="t-timeline"></ul>
+    </div>
+
+    <div class="done-actions">
+      <a class="btn-sharp btn-sharp-solid" id="t-wa" href="#" target="_blank" rel="noopener noreferrer">Message us on WhatsApp</a>
+      <a class="btn-sharp" href="tel:+918730883206">Call +91 87308 83206</a>
+    </div>
+  </section>
+
+  <div id="t-error" class="bk-notice" hidden>
+    <h2 class="font-display">We couldn't open this booking</h2>
+    <p id="t-error-msg"></p>
+    <a class="btn-sharp btn-sharp-solid" href="https://wa.me/918730883206" target="_blank" rel="noopener noreferrer">Message us on WhatsApp</a>
+  </div>
+</main>
+
+<footer class="bk-foot">
+  <span>© <span id="year">2026</span> Cloud Trails Rentals · Nongrim Hills, Shillong</span>
+  <span><a href="tel:+918730883206">+91 87308 83206</a> · <a href="mailto:help@cloudtrails.in">help@cloudtrails.in</a></span>
+</footer>
+<script src="js/config.js"></script>
+<script type="module" src="js/track.js"></script>
+</body>
+</html>

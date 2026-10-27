@@ -1,0 +1,29 @@
+{
+  "name": "cloudtrails",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  // The Worker serves the whole site from this folder (files listed in .assetsignore are left out),
+  // plus the booking API at /api/* and the admin panel at /admin.
+  "assets": { "directory": "./", "binding": "ASSETS", "run_worker_first": true },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  // Daily at 03:00 IST: delete documents of finished bookings after the retention period (Admin → Settings).
+  "triggers": { "crons": ["30 21 * * *"] },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "cloudtrails", "database_id": "0441633f-9d63-422b-8dfe-fd291c9e21f5", "migrations_dir": "migrations" }
+  ],
+  // Private storage for licences, IDs, selfies, signatures and payment screenshots.
+  // To use R2 instead (10 GB free): enable R2 in the dashboard, create a bucket "cloudtrails-documents" and uncomment r2_buckets.
+  "kv_namespaces": [
+    { "binding": "DOCS", "id": "cbbe283bf6ee400cafd94f07956fa9d6" }
+  ],
+  // "r2_buckets": [ { "binding": "FILES", "bucket_name": "cloudtrails-documents" } ],
+  "vars": {
+    // The live site on GitHub Pages calls this Worker's API, so its addresses are allowed here.
+    "ALLOWED_ORIGINS": "https://cloudtrails.in,https://www.cloudtrails.in"
+  }
+  // Secrets (never commit them) — Workers & Pages → cloudtrails → Settings → Variables and Secrets:
+  //   ADMIN_PASSWORD   password for /admin (8+ characters)            required
+  //   SESSION_SECRET   any long random text, signs admin sessions     optional
+  //   RESEND_API_KEY   email alert for each new booking (resend.com)  optional
+}

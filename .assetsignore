@@ -1,0 +1,17 @@
+# Files the Worker must NOT serve as part of the website
+.git
+.github
+.gitignore
+.assetsignore
+.dev.vars*
+.wrangler
+node_modules
+worker
+migrations
+tests
+package.json
+package-lock.json
+wrangler.jsonc
+_config.yml
+README.md
+CNAME

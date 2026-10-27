@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0A100D">
+<meta name="description" content="Book a scooty or bike in Shillong online — choose your ride, upload your licence and ID, sign the rental agreement and pay by UPI. Pick up at Nongrim Hills or get it delivered.">
+<title>Book your ride | Cloud Trails</title>
+<link rel="icon" type="image/svg+xml" href="images/logo-mark.svg">
+<link rel="stylesheet" href="css/site.css">
+<link rel="stylesheet" href="css/book.css">
+</head>
+<body class="grain">
+<header class="bk-top">
+  <a href="index.html" class="bk-brand" aria-label="Cloud Trails home"><img src="images/logo-mark.svg" alt="Cloud Trails" width="400" height="160"></a>
+  <nav class="bk-top-links">
+    <a href="index.html#fleet">Fleet</a>
+    <a href="index.html#pricing">Pricing</a>
+    <a href="track.html">My booking</a>
+    <a class="bk-wa" id="top-wa" href="https://wa.me/918730883206" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+  </nav>
+</header>
+
+<main class="bk-main">
+  <section class="bk-intro">
+    <p class="eyebrow">Online booking · about 5 minutes</p>
+    <h1 class="font-display">Book your <span class="font-serif-accent accent">ride</span></h1>
+    <p class="lede">Choose your vehicle, upload your licence and ID, sign the rental agreement and pay by UPI. Then just collect it at Nongrim Hills — or we'll bring it to your door.</p>
+  </section>
+
+  <div id="offline" class="bk-notice" hidden>
+    <h2 class="font-display">Online booking is unavailable right now</h2>
+    <p id="offline-msg">We couldn't reach our booking system. You can still book in a minute on WhatsApp.</p>
+    <a class="btn-sharp btn-sharp-solid" id="offline-wa" href="https://wa.me/918730883206" target="_blank" rel="noopener noreferrer">Book on WhatsApp</a>
+  </div>
+
+  <div id="app" class="bk-grid" hidden>
+    <div class="bk-flow">
+      <ol class="bk-steps" id="steps" aria-label="Booking steps">
+        <li data-step="0"><span>01</span>Ride</li>
+        <li data-step="1"><span>02</span>Pickup / drop</li>
+        <li data-step="2"><span>03</span>Your details</li>
+        <li data-step="3"><span>04</span>Documents</li>
+        <li data-step="4"><span>05</span>Agreement</li>
+        <li data-step="5"><span>06</span>Pay</li>
+      </ol>
+
+      <form id="bk-form" novalidate autocomplete="on">
+        <!-- STEP 1: RIDE -->
+        <section class="bk-step" data-step="0">
+          <h2 class="step-title font-display">When are you riding?</h2>
+          <div class="row2">
+            <div class="fld">
+              <label for="start-date">Start</label>
+              <div class="dt"><input class="field" type="date" id="start-date" required><select class="field" id="start-time" aria-label="Start time"></select></div>
+              <p class="err" data-err="start"></p>
+            </div>
+            <div class="fld">
+              <label for="end-date">Return</label>
+              <div class="dt"><input class="field" type="date" id="end-date" required><select class="field" id="end-time" aria-label="Return time"></select></div>
+              <p class="err" data-err="end"></p>
+            </div>
+          </div>
+          <p class="hint" id="duration-hint"></p>
+
+          <h2 class="step-title font-display">Pick your ride</h2>
+          <div class="vehicles" id="vehicles" role="radiogroup" aria-label="Vehicle"></div>
+          <p class="err" data-err="vehicle"></p>
+
+          <label class="toggle-card" for="guide">
+            <input type="checkbox" id="guide">
+            <span class="tc-body">
+              <span class="tc-title">Add a local guide <b id="guide-price">+₹1,000 / day</b></span>
+              <span class="tc-sub">A local rider alongside you on their own bike — routes, stories, and knowing exactly where to stop.</span>
+            </span>
+          </label>
+        </section>
+
+        <!-- STEP 2: PICKUP / DROP -->
+        <section class="bk-step" data-step="1" hidden>
+          <h2 class="step-title font-display">How do you get the vehicle?</h2>
+          <div class="opts" role="radiogroup" aria-label="Handover">
+            <label class="opt"><input type="radio" name="handover" value="pickup" checked>
+              <span class="opt-body"><span class="opt-title">Pick up at our counter</span><span class="opt-price">Free</span>
+              <span class="opt-sub" id="counter-address">Nongrim Hills, near Mizo Modern School, Shillong</span>
+              <a class="opt-link" href="https://maps.google.com/?q=Nongrim+Hills+Mizo+Modern+School+Shillong" target="_blank" rel="noopener noreferrer">Open in Maps ↗</a></span>
+            </label>
+            <label class="opt"><input type="radio" name="handover" value="delivery">
+              <span class="opt-body"><span class="opt-title">Deliver to my door</span><span class="opt-price" id="delivery-price">₹200</span>
+              <span class="opt-sub" id="delivery-area">Anywhere within Shillong city</span></span>
+            </label>
+          </div>
+          <div class="addr" id="delivery-fields" hidden>
+            <div class="fld"><label for="handover_address">Delivery address</label>
+              <textarea class="field" id="handover_address" rows="2" placeholder="Hotel / homestay name, street, locality" autocomplete="street-address"></textarea>
+              <p class="err" data-err="handover_address"></p></div>
+            <div class="fld"><label for="handover_landmark">Landmark <i>(optional)</i></label>
+              <input class="field" id="handover_landmark" placeholder="e.g. opposite Police Bazar point"></div>
+            <p class="hint">Keep your original licence and ID ready — our rider checks them at handover.</p>
+          </div>
+
+          <h2 class="step-title font-display">And at the end?</h2>
+          <div class="opts" role="radiogroup" aria-label="Return">
+            <label class="opt"><input type="radio" name="return_mode" value="counter" checked>
+              <span class="opt-body"><span class="opt-title">I'll return it to the counter</span><span class="opt-price">Free</span>
+              <span class="opt-sub">Drop it back at Nongrim Hills.</span></span>
+            </label>
+            <label class="opt"><input type="radio" name="return_mode" value="collection">
+              <span class="opt-body"><span class="opt-title">Collect it from me</span><span class="opt-price" id="collection-price">₹200</span>
+              <span class="opt-sub">We pick it up from your address in Shillong.</span></span>
+            </label>
+          </div>
+          <div class="addr" id="collection-fields" hidden>
+            <label class="check" id="same-wrap"><input type="checkbox" id="same-address" checked> Same as the delivery address</label>
+            <div class="fld" id="return-address-wrap"><label for="return_address">Collection address</label>
+              <textarea class="field" id="return_address" rows="2" placeholder="Where should we collect it?"></textarea>
+              <p class="err" data-err="return_address"></p></div>
+          </div>
+        </section>
+
+        <!-- STEP 3: DETAILS -->
+        <section class="bk-step" data-step="2" hidden>
+          <h2 class="step-title font-display">About you</h2>
+          <p class="hint">Use your name exactly as it appears on your driving licence.</p>
+          <div class="row2">
+            <div class="fld"><label for="name">Full name</label><input class="field" id="name" autocomplete="name" placeholder="e.g. Riya Sharma"><p class="err" data-err="name"></p></div>
+            <div class="fld"><label for="dob">Date of birth</label><input class="field" type="date" id="dob" autocomplete="bday"><p class="err" data-err="dob"></p></div>
+            <div class="fld"><label for="phone">Mobile (WhatsApp)</label><input class="field" id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="98765 43210"><p class="err" data-err="phone"></p></div>
+            <div class="fld"><label for="email">Email <i>(optional)</i></label><input class="field" id="email" type="email" autocomplete="email" placeholder="you@example.com"><p class="err" data-err="email"></p></div>
+          </div>
+          <div class="fld"><label for="address">Permanent address</label><textarea class="field" id="address" rows="2" autocomplete="street-address" placeholder="House, street, city, state, PIN"></textarea><p class="err" data-err="address"></p></div>
+          <div class="row2">
+            <div class="fld"><label for="hometown">Travelling from <i>(optional)</i></label><input class="field" id="hometown" placeholder="City"></div>
+            <div class="fld"><label for="pillion_name">Pillion rider <i>(optional)</i></label><input class="field" id="pillion_name" placeholder="Name of your passenger"></div>
+          </div>
+          <h3 class="sub-title">Emergency contact</h3>
+          <div class="row2">
+            <div class="fld"><label for="emergency_name">Name &amp; relation</label><input class="field" id="emergency_name" placeholder="e.g. Amit Sharma (brother)"><p class="err" data-err="emergency_name"></p></div>
+            <div class="fld"><label for="emergency_phone">Their phone</label><input class="field" id="emergency_phone" type="tel" inputmode="tel" placeholder="98765 00000"><p class="err" data-err="emergency_phone"></p></div>
+          </div>
+          <div class="fld"><label for="notes">Anything we should know? <i>(optional)</i></label><textarea class="field" id="notes" rows="2" placeholder="Flight time, helmet size, routes you're planning…"></textarea></div>
+        </section>
+
+        <!-- STEP 4: DOCUMENTS -->
+        <section class="bk-step" data-step="3" hidden>
+          <h2 class="step-title font-display">Driving licence</h2>
+          <div class="row2">
+            <div class="fld"><label for="licence_no">Licence number</label><input class="field" id="licence_no" placeholder="e.g. ML05 20190012345" autocapitalize="characters"><p class="err" data-err="licence_no"></p></div>
+            <div class="fld"><label for="licence_expiry">Valid until</label><input class="field" type="date" id="licence_expiry"><p class="err" data-err="licence_expiry"></p></div>
+          </div>
+          <div class="uploads">
+            <div class="up" data-kind="licence_front"></div>
+            <div class="up" data-kind="licence_back"></div>
+          </div>
+
+          <h2 class="step-title font-display">Government photo ID</h2>
+          <div class="fld"><label for="id_type">ID type</label><select class="field" id="id_type"><option value="">Choose…</option></select><p class="err" data-err="id_type"></p></div>
+          <div class="uploads">
+            <div class="up" data-kind="id_front"></div>
+            <div class="up" data-kind="id_back"></div>
+          </div>
+
+          <h2 class="step-title font-display">A quick photo of you</h2>
+          <p class="hint">A clear selfie, face visible, no sunglasses. We match it with your ID at handover.</p>
+          <div class="uploads one">
+            <div class="up" data-kind="selfie"></div>
+          </div>
+          <p class="hint small">Photos or PDFs, up to 10 MB each. Your documents are stored privately, seen only by Cloud Trails, and deleted within 30 days of your rental.</p>
+        </section>
+
+        <!-- STEP 5: AGREEMENT -->
+        <section class="bk-step" data-step="4" hidden>
+          <h2 class="step-title font-display">Rental agreement</h2>
+          <div class="terms" id="terms" tabindex="0" aria-label="Rental agreement"></div>
+          <div class="consents" id="consents"></div>
+          <p class="err" data-err="consents"></p>
+          <div class="row2">
+            <div class="fld"><label for="consent_name">Type your full name to sign</label><input class="field" id="consent_name" autocomplete="off" placeholder="Same as on your licence"><p class="err" data-err="consent_name"></p></div>
+            <div class="fld"><label>Date</label><input class="field" id="consent_date" disabled></div>
+          </div>
+          <div class="fld">
+            <label for="sig">Sign here</label>
+            <div class="sig-wrap"><canvas id="sig" aria-label="Signature pad — draw your signature with your finger or mouse"></canvas>
+              <span class="sig-ph" id="sig-ph">Draw your signature</span>
+              <button type="button" class="sig-clear" id="sig-clear">Clear</button></div>
+            <p class="err" data-err="signature"></p>
+          </div>
+          <p class="err" data-err="terms"></p>
+        </section>
+
+        <!-- STEP 6: PAY -->
+        <section class="bk-step" data-step="5" hidden>
+          <h2 class="step-title font-display">Review &amp; pay</h2>
+          <div class="review" id="review"></div>
+
+          <div class="pay" id="pay-upi" hidden>
+            <div class="pay-qr">
+              <div id="qr" class="qr" aria-label="UPI QR code"></div>
+              <p class="qr-note" id="qr-note">Scan with any UPI app</p>
+            </div>
+            <div class="pay-info">
+              <p class="pay-amount">Pay <b id="pay-amount">₹0</b></p>
+              <p class="hint" id="pay-explain"></p>
+              <p class="upi-id" id="upi-id-row" hidden>UPI ID <code id="upi-id"></code> <button type="button" class="link-btn" id="copy-upi">Copy</button></p>
+              <a class="btn-sharp upi-btn" id="upi-link" href="#">Pay with a UPI app</a>
+              <div class="fld"><label for="upi_utr">UPI reference / UTR no. <i>(12 digits, from your payment app)</i></label><input class="field" id="upi_utr" inputmode="numeric" placeholder="e.g. 432198765432"><p class="err" data-err="upi_utr"></p></div>
+              <div class="uploads one"><div class="up" data-kind="payment"></div></div>
+            </div>
+          </div>
+          <div class="pay-later" id="pay-later" hidden>
+            <p><b>No online payment needed now.</b> <span id="pay-later-msg">Pay the rent and refundable deposit at handover, by UPI or cash.</span></p>
+          </div>
+          <p class="err big" id="submit-error"></p>
+        </section>
+
+        <div class="bk-nav">
+          <button type="button" class="btn-sharp" id="back">Back</button>
+          <button type="button" class="btn-sharp btn-sharp-solid" id="next">Continue</button>
+        </div>
+      </form>
+    </div>
+
+    <aside class="bk-summary" id="summary" aria-live="polite">
+      <div class="sum-img" id="sum-img"></div>
+      <div class="sum-body">
+        <p class="eyebrow" id="sum-cat">Your ride</p>
+        <h3 class="font-display" id="sum-name">Choose a vehicle</h3>
+        <p class="sum-dates" id="sum-dates"></p>
+        <p class="sum-hand" id="sum-hand"></p>
+        <ul class="sum-lines" id="sum-lines"></ul>
+        <div class="sum-total"><span>Total</span><b id="sum-total">₹0</b></div>
+        <p class="sum-dep" id="sum-dep"></p>
+        <p class="sum-inc">Includes full tank, two helmets, rain cover and a route briefing.</p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Done -->
+  <section id="done" class="bk-done" hidden>
+    <p class="eyebrow">Booking received</p>
+    <h1 class="font-display">You're on the <span class="font-serif-accent accent">list</span>, <span id="done-name"></span></h1>
+    <p class="ref">Booking reference <b id="done-ref"></b></p>
+    <p class="lede">We'll check your documents and payment and confirm on WhatsApp, usually within the hour (9 AM – 10 PM). Save your status link — you can see updates and upload anything we ask for there.</p>
+    <div class="done-actions">
+      <a class="btn-sharp btn-sharp-solid" id="done-track" href="track.html">See booking status</a>
+      <a class="btn-sharp" id="done-wa" href="#" target="_blank" rel="noopener noreferrer">Send it to us on WhatsApp</a>
+    </div>
+    <p class="hint small">Status link: <a id="done-link" href="#"></a> <button type="button" class="link-btn" id="copy-link">Copy</button></p>
+  </section>
+</main>
+
+<div class="bk-bar" id="bar" hidden>
+  <div><span class="bar-label">Total</span> <b id="bar-total">₹0</b> <span class="bar-days" id="bar-days"></span></div>
+  <button type="button" class="btn-sharp btn-sharp-solid" id="bar-next">Continue</button>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="overlay-box">
+    <p class="font-display" id="overlay-title">Sending your booking…</p>
+    <div class="progress"><span id="progress"></span></div>
+    <p class="hint" id="overlay-sub">Uploading your documents securely. Keep this page open.</p>
+  </div>
+</div>
+
+<footer class="bk-foot">
+  <span>© <span id="year">2026</span> Cloud Trails Rentals · Nongrim Hills, Shillong</span>
+  <span><a href="tel:+918730883206">+91 87308 83206</a> · <a href="mailto:help@cloudtrails.in">help@cloudtrails.in</a></span>
+</footer>
+
+<script src="js/config.js"></script>
+<script type="module" src="js/book.js"></script>
+</body>
+</html>

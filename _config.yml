@@ -1,0 +1,11 @@
+# GitHub Pages: publish the website only. The admin panel and Worker code live on Cloudflare.
+exclude:
+  - admin
+  - worker
+  - migrations
+  - tests
+  - node_modules
+  - package.json
+  - package-lock.json
+  - wrangler.jsonc
+  - README.md

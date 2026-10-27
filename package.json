@@ -1,0 +1,11 @@
+{
+  "name": "cloudtrails",
+  "private": true,
+  "description": "Cloud Trails Rentals: website + online booking platform (Cloudflare Worker, D1, KV).",
+  "type": "module",
+  "scripts": {
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy",
+    "test": "node --no-warnings --test tests/api.test.mjs"
+  }
+}
