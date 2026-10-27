@@ -12,7 +12,7 @@ Website and online booking platform for Cloud Trails Rentals, Shillong.
 
 1. **Create the Worker from this repo.** In Cloudflare go to **Workers & Pages → Create → Import a repository**, pick `adityaps70/cloudtrails`, keep the defaults (no build command, deploy command `npx wrangler deploy`) and deploy. After that, every push to `main` redeploys.
 2. **Set the admin password.** Go to **Workers & Pages → cloudtrails → Settings → Variables and Secrets → Add**, choose type **Secret**, name it `ADMIN_PASSWORD` and enter a strong password (8+ characters). Optionally add `SESSION_SECRET` (any long random text).
-3. **Connect the live site.** Copy the Worker address (e.g. `https://cloudtrails.<your-subdomain>.workers.dev`) into `js/config.js` → `window.CT_WORKER_URL`, then commit. cloudtrails.in (GitHub Pages) then sends bookings to the Worker.
+3. **Live site connection:** `js/config.js` points cloudtrails.in (GitHub Pages) at the Worker, https://cloudtrails.apsapsaps43.workers.dev.
 4. **Open the admin** at `https://cloudtrails.<your-subdomain>.workers.dev/admin`, sign in, and in **Settings** add your UPI ID (and optionally your UPI QR image). In **Fleet & prices**, set how many of each vehicle you have.
 
 Until step 3 is done, the booking page on cloudtrails.in shows a "book on WhatsApp" fallback, so nothing breaks in the meantime.
