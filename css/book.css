@@ -221,6 +221,8 @@ input[type='date'].field::-webkit-calendar-picker-indicator { filter: invert(0.8
 @media (min-width: 980px) { .bk-foot { padding: 1.6rem 2.5rem; } }
 
 /* ---------- Track page ---------- */
+@media (max-width: 420px) { #find.tr-card { padding: 1.1rem; } .dpick select.field { padding-left: 0.7rem; padding-right: 1.7rem; } .dpick .dp-sel::after { right: 0.7rem; } }
+#found { margin-top: 1.2rem; }
 .tr-card { background: var(--surface); border: 1px solid rgba(255,255,255,0.08); padding: 1.5rem; margin-top: 1.5rem; }
 .tr-status { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; padding: 0.45rem 0.75rem; border: 1px solid currentColor; }
 .tr-status.pending { color: var(--mustard); } .tr-status.confirmed, .tr-status.ongoing, .tr-status.completed { color: #9ED2B0; } .tr-status.cancelled, .tr-status.rejected { color: #F0A28E; }
