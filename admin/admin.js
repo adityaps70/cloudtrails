@@ -302,6 +302,7 @@ function renderDetail({ booking: b, files, events, doc_labels, items = [], rider
   if (open) acts.push('<button class="btn danger" data-act="cancel">Cancel</button>', '<button class="btn danger" data-act="reject">Reject</button>');
   if (['cancelled', 'rejected'].includes(b.status) && ['verified', 'submitted'].includes(b.payment_status)) acts.push('<button class="btn" data-act="refund">Mark refunded</button>');
   acts.push(`<a class="btn" href="#/print/${b.id}">Print agreement</a>`);
+  if (b.status !== 'ongoing') acts.push('<button class="btn danger" data-act="delete">Delete permanently</button>');
 
   const warnings = [];
   if (b.status === 'pending' && b.docs_status !== 'verified') warnings.push('Documents not verified yet.');
@@ -463,6 +464,16 @@ function action(b, act, labels) {
         body: `<div class="f"><label class="lb" for="m-msg">Reason (shown to the customer)</label><textarea class="in" id="m-msg" rows="3">${act === 'reject' ? 'Sorry, we could not verify your documents for this booking. Any amount you paid will be refunded within 3 working days.' : 'Your booking was cancelled as requested. Any refund due will be sent within 3 working days.'}</textarea></div>
           <p class="small muted">This frees the vehicle for these dates.</p>`,
         onOk: (box) => run({ message: V(box, 'm-msg') }, act === 'reject' ? 'Booking rejected' : 'Booking cancelled'),
+      });
+    case 'delete':
+      return modal({
+        title: `Delete ${b.ref} permanently`, ok: 'Delete forever', okClass: 'danger',
+        body: `<div class="alert warn">This removes the booking, every uploaded document, the signed agreement and its history. It can't be undone and the customer's status link stops working.</div>
+          <div class="f"><label class="lb" for="m-ref">Type <b>${esc(b.ref)}</b> to confirm</label><input class="in" id="m-ref" autocomplete="off" autocapitalize="characters" placeholder="${esc(b.ref)}"></div>`,
+        onOk: async (box) => {
+          const r = await post(`/bookings/${b.id}/delete`, { confirm_ref: V(box, 'm-ref') });
+          toast(`${r.deleted} deleted`); refreshBadge(); location.hash = '#/bookings';
+        },
       });
     case 'refund':
       return modal({ title: 'Mark refunded', ok: 'Mark refunded', body: `<div class="f"><label class="lb" for="m-amt">Amount refunded (₹)</label><input class="in" id="m-amt" type="number" value="${b.paid_amount || b.pay_now}"></div>`, onOk: (box) => run({ amount: V(box, 'm-amt') }, 'Marked refunded') });
