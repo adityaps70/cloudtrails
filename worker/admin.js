@@ -106,9 +106,14 @@ async function listBookings(env, url) {
   if (p.get('docs') === 'submitted') where.push("docs_status = 'submitted'");
   const qtext = str(p.get('q'), 60);
   if (qtext) {
-    where.push('(ref LIKE ? OR name LIKE ? OR phone LIKE ? OR licence_no LIKE ? OR assigned_reg LIKE ?)');
     const like = '%' + qtext.replace(/[%_]/g, '') + '%';
-    args.push(like, like, like, like, like);
+    // Phone numbers are stored as +91XXXXXXXXXX; match the digits however they were typed (spaces, +91, 0…).
+    let digits = qtext.replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+    if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+    const phoneLike = digits.length >= 4 ? '%' + digits + '%' : like;
+    where.push('(ref LIKE ? OR name LIKE ? OR phone LIKE ? OR emergency_phone LIKE ? OR licence_no LIKE ? OR assigned_reg LIKE ?)');
+    args.push(like, like, phoneLike, phoneLike, like, like);
   }
   const from = p.get('from'), to = p.get('to');
   if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) { where.push('end_at >= ?'); args.push(from); }

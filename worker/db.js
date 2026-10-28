@@ -78,7 +78,7 @@ export const DEFAULT_SETTINGS = {
   delivery_fee: '200',
   collection_fee: '200',
   delivery_area: 'Anywhere within Shillong city',
-  counter_address: 'Nongrim Hills, near Mizo Modern School, Shillong, Meghalaya 793019',
+  counter_address: 'La Shimti, Mawdiangdiang (Golf Links area), New Shillong, Meghalaya 793018',
   open_hour: '9',
   close_hour: '22',
   min_lead_hours: '2',

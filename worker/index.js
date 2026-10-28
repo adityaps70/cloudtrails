@@ -1,7 +1,7 @@
 // Cloud Trails Worker: serves the website, the public booking API (/api/*) and the admin panel (/admin).
 
 import { ensureSchema, getSettings, nowISO, logEvent } from './db.js';
-import { getConfig, availability, createBooking, bookingStatus, customerUpload, publicQr } from './public.js';
+import { getConfig, availability, createBooking, bookingStatus, customerUpload, publicQr, lookupBookings } from './public.js';
 import { handleAdmin } from './admin.js';
 import { purgeBookingDocs } from './storage.js';
 import { json, HttpError } from './util.js';
@@ -94,6 +94,7 @@ async function publicRoute(request, env, ctx, url) {
   if (p === '/api/availability' && m === 'GET') return availability(env, url);
   if (p === '/api/qr' && m === 'GET') return publicQr(env, request);
   if (p === '/api/bookings' && m === 'POST') return createBooking(request, env, ctx);
+  if (p === '/api/bookings/lookup' && m === 'POST') return lookupBookings(request, env);
   let mm;
   if ((mm = p.match(/^\/api\/bookings\/(CT-[A-Z0-9]{6})$/)) && m === 'GET') return bookingStatus(env, mm[1], url.searchParams.get('t'));
   if ((mm = p.match(/^\/api\/bookings\/(CT-[A-Z0-9]{6})\/files$/)) && m === 'POST') return customerUpload(request, env, mm[1], url.searchParams.get('t'));

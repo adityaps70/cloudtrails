@@ -18,6 +18,16 @@ async function sign(env, payload) {
   return body + '.' + b64url(new Uint8Array(sig));
 }
 
+/** Short-lived signed token for a customer who found their booking by phone + date of birth. */
+export async function signBookingAccess(env, ref, hours = 24) {
+  return sign(env, { k: 'bk', ref, exp: Date.now() + hours * 3600 * 1000 });
+}
+
+export async function verifyBookingAccess(env, ref, token) {
+  const p = await verify(env, token);
+  return !!p && p.k === 'bk' && p.ref === ref;
+}
+
 async function verify(env, token) {
   const [body, sig] = String(token || '').split('.');
   if (!body || !sig) return null;

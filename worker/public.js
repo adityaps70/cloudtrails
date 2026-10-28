@@ -6,6 +6,7 @@ import { putFile, getFile } from './storage.js';
 import { quote, nowIST, parseLocal, rentalDays, itemsSummary } from '../js/pricing.js';
 import { json, bad, HttpError, clientIp, randomRef, randomHex, sha256Hex, str, normPhone, isEmail, isDate, sniffMime } from './util.js';
 import { notifyNewBooking } from './notify.js';
+import { signBookingAccess, verifyBookingAccess } from './auth.js';
 
 export const DOC_KINDS = {
   licence_front: { label: 'Driving licence (front)', required: true },
@@ -266,10 +267,37 @@ export async function createBooking(request, env, ctx) {
 }
 
 async function bookingByToken(env, ref, token) {
-  if (!/^CT-[A-Z0-9]{6}$/.test(String(ref)) || !/^[a-f0-9]{40}$/.test(String(token))) return null;
+  if (!/^CT-[A-Z0-9]{6}$/.test(String(ref)) || !token) return null;
+  const hexToken = /^[a-f0-9]{40}$/.test(String(token));
+  if (!hexToken && !(String(token).length < 400 && await verifyBookingAccess(env, ref, token))) return null;
   const b = await env.DB.prepare('SELECT * FROM bookings WHERE ref = ?').bind(ref).first();
-  if (!b || b.token_hash !== await sha256Hex(token)) return null;
+  if (!b || (hexToken && b.token_hash !== await sha256Hex(token))) return null;
   return b;
+}
+
+const LOOKUP_MAX = 10;                      // lookups per IP
+const LOOKUP_WINDOW_MS = 15 * 60 * 1000;    // per 15 minutes
+
+/** Customer finds their bookings with the mobile number and date of birth used when booking. */
+export async function lookupBookings(request, env) {
+  let d = {};
+  try { d = await request.json(); } catch {}
+  const phone = normPhone(d.phone);
+  const dob = str(d.dob, 10);
+  if (!phone) throw bad('Enter the mobile number you booked with.');
+  if (!isDate(dob)) throw bad('Enter your date of birth.');
+  const key = 'lookup:' + clientIp(request);
+  const since = Date.now() - LOOKUP_WINDOW_MS;
+  await env.DB.prepare('DELETE FROM login_attempts WHERE at < ?').bind(since).run();
+  const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM login_attempts WHERE ip = ? AND at >= ?').bind(key, since).first();
+  if ((row?.n || 0) >= LOOKUP_MAX) throw new HttpError(429, 'Too many searches. Please try again in 15 minutes, or call us on +91 82579 29949.');
+  await env.DB.prepare('INSERT INTO login_attempts (ip, at) VALUES (?, ?)').bind(key, Date.now()).run();
+  const { results } = await env.DB.prepare(
+    'SELECT ref, status, vehicle_name, start_at, end_at FROM bookings WHERE phone = ? AND dob = ? ORDER BY id DESC LIMIT 10').bind(phone, dob).all();
+  const bookings = await Promise.all((results || []).map(async (b) => ({
+    ref: b.ref, status: b.status, vehicle: b.vehicle_name, start: b.start_at, end: b.end_at, token: await signBookingAccess(env, b.ref),
+  })));
+  return json({ bookings });
 }
 
 const CUSTOMER_EVENTS = {
