@@ -276,7 +276,8 @@ function waText(b, kind) {
   return `https://wa.me/${phoneDigits(b.phone)}?text=${encodeURIComponent(t)}`;
 }
 
-function renderDetail({ booking: b, files, events, doc_labels }) {
+function renderDetail({ booking: b, files, events, doc_labels, items = [], riders = [] }) {
+  const many = items.reduce((a, i) => a + i.qty, 0) > 1;
   const latest = {};
   for (const f of files) latest[f.kind] = f.id; // files are in upload order → last wins
   const docFiles = files.filter((f) => !['signature', 'payment'].includes(f.kind));
@@ -316,7 +317,8 @@ function renderDetail({ booking: b, files, events, doc_labels }) {
     <div class="det">
       <div>
         <div class="card"><h2>Rental</h2><dl class="kv">
-          <dt>Vehicle</dt><dd><b>${esc(b.vehicle_name)}</b>${b.guide ? ' + local guide' : ''} ${b.assigned_reg ? `· <b>${esc(b.assigned_reg)}</b>` : ''} <button class="link" data-act="assign">${b.assigned_reg ? 'Change' : 'Assign vehicle no.'}</button></dd>
+          <dt>${many ? 'Vehicles' : 'Vehicle'}</dt><dd>${items.length ? items.map((i) => `<div class="item-row"><span class="item-qty">${i.qty}×</span> <b>${esc(i.vehicle_name)}</b> <span class="muted small">${inr(i.rent)}</span></div>`).join('') : `<b>${esc(b.vehicle_name)}</b>`}${b.guide ? '<div class="item-row muted">+ local guide</div>' : ''}</dd>
+          <dt>Vehicle no.</dt><dd>${b.assigned_reg ? `<b>${esc(b.assigned_reg)}</b> ` : ''}<button class="link" data-act="assign">${b.assigned_reg ? 'Change' : many ? 'Assign vehicle numbers' : 'Assign vehicle no.'}</button></dd>
           <dt>Start</dt><dd>${esc(when(b.start_at))}</dd>
           <dt>Return</dt><dd>${esc(when(b.end_at))} · ${b.days} day${b.days > 1 ? 's' : ''}</dd>
           <dt>Handover</dt><dd>${b.handover === 'delivery' ? `<span class="tag del">Deliver</span> ${esc(b.handover_address)}${b.handover_landmark ? ` <span class="muted">(${esc(b.handover_landmark)})</span>` : ''} · <a class="link" href="${mapLink(b.handover_address)}" target="_blank" rel="noopener">Map ↗</a>` : '<span class="tag pick">Pickup</span> At the counter'}</dd>
@@ -368,7 +370,10 @@ function renderDetail({ booking: b, files, events, doc_labels }) {
       </div>
 
       <div>
-        <div class="card"><h2>Customer</h2><dl class="kv">
+        ${riders.length ? `<div class="card"><h2>Other riders <small>${riders.length} + lead rider</small></h2>
+          ${riders.map((r, i) => `<dl class="kv rider-kv"><dt>Rider ${i + 2}</dt><dd><b>${esc(r.name)}</b>${r.phone ? ` · <a href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : ''}<br><span class="muted small">Licence ${esc(r.licence_no)}</span></dd></dl>`).join('')}
+          <p class="small muted" style="margin:.4rem 0 0">Their licence photos are in Documents. Check each original at handover.</p></div>` : ''}
+        <div class="card"><h2>${many ? 'Lead rider' : 'Customer'}</h2><dl class="kv">
           <dt>Phone</dt><dd><a href="tel:${esc(b.phone)}">${esc(b.phone)}</a></dd>
           ${b.email ? `<dt>Email</dt><dd><a href="mailto:${esc(b.email)}">${esc(b.email)}</a></dd>` : ''}
           <dt>Date of birth</dt><dd>${esc(b.dob)} (${age(b.dob)} yrs)</dd>
@@ -445,7 +450,7 @@ function action(b, act, labels) {
     case 'request_reupload':
       return modal({
         title: 'Ask for documents again', ok: 'Request',
-        body: `<div class="checks">${['licence_front', 'licence_back', 'id_front', 'id_back', 'selfie'].map((k) => `<label><input type="checkbox" value="${k}"> ${esc(labels[k])}</label>`).join('')}</div>
+        body: `<div class="checks">${['licence_front', 'licence_back', 'id_front', 'id_back', 'selfie', ...Object.keys(labels).filter((k) => /^rider\d+_licence$/.test(k)).sort()].map((k) => `<label><input type="checkbox" value="${k}"> ${esc(labels[k])}</label>`).join('')}</div>
           <div class="f"><label class="lb" for="m-msg">Message for the customer</label><textarea class="in" id="m-msg" rows="2">Please upload clearer photos of the documents below — all four corners visible, no glare.</textarea></div>`,
         onOk: (box) => run({ kinds: $$('input[type=checkbox]:checked', box).map((c) => c.value), message: V(box, 'm-msg') }, 'Re-upload requested'),
       });
@@ -463,7 +468,7 @@ function action(b, act, labels) {
       return modal({
         title: 'Hand over vehicle', ok: 'Vehicle handed over', okClass: 'ok',
         body: `<div class="alert info">Check the original licence and ID against the uploads, and that the rider matches the selfie.</div>
-          <div class="grid2"><div class="f"><label class="lb" for="m-reg">Registration no.</label><input class="in" id="m-reg" value="${esc(b.assigned_reg || '')}" placeholder="ML05 AB 1234"></div>
+          <div class="grid2"><div class="f"><label class="lb" for="m-reg">Registration no.${(b.vehicle_count || 1) > 1 ? ` <span class="muted">(all ${b.vehicle_count}, comma-separated)</span>` : ''}</label><input class="in" id="m-reg" value="${esc(b.assigned_reg || '')}" placeholder="${(b.vehicle_count || 1) > 1 ? 'ML05 AB 1234, ML05 AB 5678' : 'ML05 AB 1234'}"></div>
           <div class="f"><label class="lb" for="m-km">Odometer (km)</label><input class="in" id="m-km" type="number" min="0"></div>
           <div class="f"><label class="lb" for="m-fuel">Fuel</label><select class="in" id="m-fuel"><option>Full</option><option>3/4</option><option>Half</option><option>1/4</option></select></div>
           <div class="f"><label class="lb" for="m-dep">Deposit collected (₹)</label><input class="in" id="m-dep" type="number" min="0" value="${b.deposit}"></div></div>
@@ -479,17 +484,18 @@ function action(b, act, labels) {
         onOk: (box) => run({ km: V(box, 'm-km'), deposit_refunded: V(box, 'm-dep'), damage_notes: V(box, 'm-dmg') }, 'Rental completed'),
       });
     case 'assign':
-      return modal({ title: 'Vehicle registration no.', body: `<div class="f"><input class="in" id="m-reg" value="${esc(b.assigned_reg || '')}" placeholder="ML05 AB 1234"></div>`, onOk: (box) => run({ assigned_reg: V(box, 'm-reg') }, 'Saved') });
+      return modal({ title: (b.vehicle_count || 1) > 1 ? 'Vehicle registration numbers' : 'Vehicle registration no.', body: `<div class="f"><input class="in" id="m-reg" value="${esc(b.assigned_reg || '')}" placeholder="${(b.vehicle_count || 1) > 1 ? 'ML05 AB 1234, ML05 AB 5678' : 'ML05 AB 1234'}"></div>${(b.vehicle_count || 1) > 1 ? '<p class="small muted">One per vehicle, separated by commas.</p>' : ''}`, onOk: (box) => run({ assigned_reg: V(box, 'm-reg') }, 'Saved') });
     case 'message':
       return modal({ title: 'Message on status page', body: `<div class="f"><textarea class="in" id="m-msg" rows="3" placeholder="Shown to the customer on their booking status page">${esc(b.customer_message || '')}</textarea></div>`, onOk: (box) => run({ message: V(box, 'm-msg') }, 'Message saved') });
     case 'reschedule':
       return (async () => {
-        const { vehicles } = await api('/vehicles');
+        const [{ vehicles }, det] = await Promise.all([api('/vehicles'), api('/bookings/' + b.id)]);
+        const single = det.items.length === 1 && det.items[0].qty === 1;
         modal({
           title: 'Change dates or vehicle', ok: 'Save changes',
           body: `<div class="grid2"><div class="f"><label class="lb" for="m-s">Start</label><input class="in" id="m-s" type="datetime-local" value="${esc(b.start_at)}"></div>
             <div class="f"><label class="lb" for="m-e">Return</label><input class="in" id="m-e" type="datetime-local" value="${esc(b.end_at)}"></div></div>
-            <div class="f"><label class="lb" for="m-v">Vehicle</label><select class="in" id="m-v">${vehicles.map((v) => `<option value="${esc(v.id)}" ${v.id === b.vehicle_id ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select></div>
+            ${single ? `<div class="f"><label class="lb" for="m-v">Vehicle</label><select class="in" id="m-v">${vehicles.map((v) => `<option value="${esc(v.id)}" ${v.id === b.vehicle_id ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select></div>` : `<p class="small">Vehicles stay the same: <b>${esc(b.vehicle_name)}</b>.</p>`}
             <label class="checks"><label><input type="checkbox" id="m-force"> Override if fully booked</label></label>
             <p class="small muted">Prices are recalculated with today's rates. Current total: ${inr(b.total)}.</p>`,
           onOk: (box) => run({ start: V(box, 'm-s').slice(0, 16), end: V(box, 'm-e').slice(0, 16), vehicle_id: V(box, 'm-v'), force: $('#m-force', box).checked }, 'Booking updated'),
@@ -563,21 +569,71 @@ async function schedule(q) {
 
 /* ---------------- calendar ---------------- */
 async function calendar(q) {
+  const span = [7, 14, 28].includes(Number(q.get('days'))) ? Number(q.get('days')) : 14;
   const from = q.get('from') || today();
-  const c = await api(`/calendar?from=${from}&days=14`);
+  const c = await api(`/calendar?from=${from}&days=${span}`);
+  const n = c.dates.length;
+  const idx = (iso) => c.dates.indexOf(iso.slice(0, 10));
+  const STATUS_CLS = { pending: 'pending', confirmed: 'confirmed', ongoing: 'ongoing' };
+  const month = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const title = month(c.dates[0]) === month(c.dates[n - 1]) ? month(c.dates[0]) : `${month(c.dates[0]).split(' ')[0]} – ${month(c.dates[n - 1])}`;
+  const totalUnits = c.rows.filter((r) => r.active).reduce((a, r) => a + r.units, 0);
+  const busyToday = c.rows.reduce((a, r) => a + (r.cells[0] || 0), 0);
+
+  const head = `<div class="tl-row tl-head" style="--n:${n}"><div class="tl-name"><span class="tl-month">${esc(title)}</span></div>${c.dates.map((d) => {
+    const dt = new Date(d + 'T00:00:00Z');
+    const we = [0, 6].includes(dt.getUTCDay());
+    return `<div class="tl-day${we ? ' we' : ''}${d === c.today ? ' today' : ''}"><span>${dt.toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' })}</span><b>${dt.getUTCDate()}</b></div>`;
+  }).join('')}</div>`;
+
+  const blocks = c.rows.map((r) => {
+    // Lay booking bars into lanes so they don't overlap.
+    const lanes = [];
+    const bars = r.bookings.map((bk) => {
+      const a = Math.max(0, idx(bk.start) < 0 ? (bk.start < c.dates[0] ? 0 : n) : idx(bk.start));
+      const e0 = idx(bk.end);
+      const z = Math.min(n - 1, e0 < 0 ? (bk.end > c.dates[n - 1] ? n - 1 : -1) : (bk.end.slice(11) === '00:00' ? e0 - 1 : e0));
+      return { ...bk, a, z, cutL: bk.start.slice(0, 10) < c.dates[0], cutR: bk.end.slice(0, 10) > c.dates[n - 1] };
+    }).filter((x) => x.z >= x.a);
+    for (const bar of bars) {
+      let lane = lanes.findIndex((end) => end < bar.a);
+      if (lane < 0) { lane = lanes.length; lanes.push(-1); }
+      lanes[lane] = bar.z;
+      bar.lane = lane;
+    }
+    const rowsN = Math.max(1, lanes.length);
+    const cap = r.cells.map((used, i) => {
+      const free = Math.max(0, r.units - used);
+      const pct = r.units ? Math.min(100, Math.round((used / r.units) * 100)) : 0;
+      const cls = !r.units ? 'none' : used === 0 ? 'free' : used >= r.units ? 'full' : 'part';
+      return `<div class="tl-cap ${cls}${c.dates[i] === c.today ? ' today' : ''}" style="grid-column:${i + 2}" title="${used} of ${r.units} booked · ${esc(c.dates[i])}">
+        <span class="tl-free">${r.units ? (free ? `${free} free` : 'Full') : '—'}</span><span class="tl-meter"><i style="width:${pct}%"></i></span></div>`;
+    }).join('');
+    const barHtml = bars.map((b) => `<a class="tl-bar ${STATUS_CLS[b.status] || ''}${b.cutL ? ' cut-l' : ''}${b.cutR ? ' cut-r' : ''}" href="#/booking/${b.id}"
+        style="grid-column:${b.a + 2} / ${b.z + 3}; grid-row:${b.lane + 2}" title="${esc(b.ref)} · ${esc(b.name)} · ${esc(when(b.start))} → ${esc(when(b.end))}">
+        <span>${b.qty > 1 ? `<em>${b.qty}×</em> ` : ''}${esc(b.name.split(' ')[0])}</span></a>`).join('');
+    const lanesBg = Array.from({ length: rowsN }, (_, k) => c.dates.map((d, i) => `<div class="tl-cell${[0, 6].includes(new Date(d + 'T00:00:00Z').getUTCDay()) ? ' we' : ''}${d === c.today ? ' today' : ''}" style="grid-column:${i + 2}; grid-row:${k + 2}"></div>`).join('')).join('');
+    return `<div class="tl-row tl-veh${r.active ? '' : ' inactive'}" style="--n:${n}; --lanes:${rowsN}">
+      <div class="tl-name" style="grid-row:1 / span ${rowsN + 1}">
+        ${r.image ? `<img src="../${esc(r.image)}" alt="">` : ''}<div><b>${esc(r.name)}</b><span>${r.units} in fleet${r.active ? '' : ' · hidden'}</span></div></div>
+      ${cap}${lanesBg}${barHtml}
+      ${bars.length ? '' : `<div class="tl-empty" style="grid-column:2 / ${n + 2}; grid-row:2">No bookings in these dates</div>`}
+    </div>`;
+  }).join('');
+
   view.innerHTML = `
-    <div class="head"><div><h1>Availability</h1><p class="sub">Vehicles booked (pending, confirmed or on the road) out of your fleet, per day.</p></div>
-      <div class="head-actions"><a class="btn" href="#/calendar?from=${addDays(from, -7)}">← Week</a><a class="btn" href="#/calendar?from=${today()}">Today</a><a class="btn" href="#/calendar?from=${addDays(from, 7)}">Week →</a></div></div>
-    <div class="card"><div class="cal-wrap"><table class="cal"><thead><tr><th class="v">Vehicle</th>${c.dates.map((d) => {
-      const dt = new Date(d + 'T00:00:00Z');
-      const we = [0, 6].includes(dt.getUTCDay());
-      return `<th class="${we ? 'we' : ''}">${dt.toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' })}<br>${dt.getUTCDate()}</th>`;
-    }).join('')}</tr></thead><tbody>
-    ${c.rows.map((r) => `<tr><th class="v">${esc(r.name)}<br><span class="muted small">${r.units} in fleet${r.active ? '' : ' · hidden'}</span></th>${r.cells.map((n, i) => {
-      const cls = n === 0 ? 'c0' : n >= r.units ? 'c2' : 'c1';
-      return `<td class="${cls}" title="${n} of ${r.units} booked on ${c.dates[i]}">${n}/${r.units}</td>`;
-    }).join('')}</tr>`).join('')}</tbody></table></div>
-    <p class="small muted" style="margin-bottom:0">Red = fully booked (the booking page shows it as booked out). Change fleet sizes in Fleet &amp; prices.</p></div>`;
+    <div class="head"><div><h1>Availability</h1><p class="sub">${busyToday} of ${totalUnits} vehicles booked today · bars are bookings (click to open)</p></div>
+      <div class="head-actions">
+        <div class="seg">${[7, 14, 28].map((d) => `<a class="${d === span ? 'on' : ''}" href="#/calendar?from=${from}&days=${d}">${d === 7 ? 'Week' : d === 14 ? '2 weeks' : '4 weeks'}</a>`).join('')}</div>
+        <a class="btn" href="#/calendar?from=${addDays(from, -span)}&days=${span}" aria-label="Earlier">←</a>
+        <a class="btn" href="#/calendar?from=${today()}&days=${span}">Today</a>
+        <a class="btn" href="#/calendar?from=${addDays(from, span)}&days=${span}" aria-label="Later">→</a>
+        <input class="in" type="date" id="cal-from" value="${esc(from)}" style="width:auto">
+      </div></div>
+    <div class="card tl-card"><div class="tl-scroll"><div class="tl">${head}${blocks}</div></div>
+      <div class="tl-legend"><span><i class="lg free"></i>All free</span><span><i class="lg part"></i>Partly booked</span><span><i class="lg full"></i>Fully booked</span>
+        <span><i class="lg bar pending"></i>Pending</span><span><i class="lg bar confirmed"></i>Confirmed</span><span><i class="lg bar ongoing"></i>On the road</span></div></div>`;
+  $('#cal-from').addEventListener('change', () => { location.hash = `#/calendar?from=${$('#cal-from').value}&days=${span}`; });
 }
 
 /* ---------------- fleet ---------------- */
