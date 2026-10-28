@@ -3,7 +3,7 @@
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS vehicles (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Scooty', tagline TEXT, image TEXT,
-  day_rate INTEGER NOT NULL, week_rate INTEGER NOT NULL DEFAULT 0, deposit INTEGER NOT NULL DEFAULT 0, units INTEGER NOT NULL DEFAULT 1,
+  day_rate INTEGER NOT NULL, week_rate INTEGER NOT NULL DEFAULT 0, month_rate INTEGER NOT NULL DEFAULT 0, deposit INTEGER NOT NULL DEFAULT 0, units INTEGER NOT NULL DEFAULT 1,
   active INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
@@ -50,15 +50,18 @@ CREATE INDEX IF NOT EXISTS idx_items_vehicle ON booking_items (vehicle_id);
 // Columns added after the first release (SQLite has no "ADD COLUMN IF NOT EXISTS").
 const ADDED_COLUMNS = {
   bookings: { riders: 'TEXT', vehicle_count: 'INTEGER NOT NULL DEFAULT 1' },
-  vehicles: { week_rate: 'INTEGER NOT NULL DEFAULT 0' },  // ₹/day on bookings of 7+ days (0 = no weekly price)
+  vehicles: {
+    week_rate: 'INTEGER NOT NULL DEFAULT 0',   // ₹/day on bookings of 7+ days (0 = no weekly price)
+    month_rate: 'INTEGER NOT NULL DEFAULT 0',  // ₹ per 30 days on bookings of 30+ days (0 = no monthly price)
+  },
 };
 
 export const SEED_VEHICLES = [
-  { id: 'yamaha-rayzr-125', name: 'Yamaha RayZR 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-yamaha-rayzr-125.jpg', day_rate: 700, week_rate: 600, deposit: 1000, units: 5, sort: 1 },
-  { id: 'suzuki-avenis-125', name: 'Suzuki Avenis 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-suzuki-avenis-125.jpg', day_rate: 700, week_rate: 600, deposit: 1000, units: 5, sort: 2 },
-  { id: 'suzuki-burgman-street-125', name: 'Suzuki Burgman Street 125', category: 'Scooty · Maxi comfort', image: 'images/thumbs/fleet-suzuki-burgman-street-125.jpg', day_rate: 700, week_rate: 600, deposit: 1000, units: 5, sort: 3 },
-  { id: 'tvs-ntorq-125', name: 'TVS NTORQ 125', category: 'Scooty · Sporty', image: 'images/thumbs/fleet-tvs-ntorq-125.jpg', day_rate: 700, week_rate: 600, deposit: 1000, units: 5, sort: 4 },
-  { id: 'royal-enfield-hunter-350', name: 'Royal Enfield Hunter 350', category: 'Bike · 350cc', image: 'images/thumbs/fleet-royal-enfield-hunter-350.jpg', day_rate: 1500, week_rate: 0, deposit: 1000, units: 3, sort: 5 },
+  { id: 'yamaha-rayzr-125', name: 'Yamaha RayZR 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-yamaha-rayzr-125.jpg', day_rate: 700, week_rate: 600, month_rate: 15000, deposit: 1000, units: 5, sort: 1 },
+  { id: 'suzuki-avenis-125', name: 'Suzuki Avenis 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-suzuki-avenis-125.jpg', day_rate: 700, week_rate: 600, month_rate: 15000, deposit: 1000, units: 5, sort: 2 },
+  { id: 'suzuki-burgman-street-125', name: 'Suzuki Burgman Street 125', category: 'Scooty · Maxi comfort', image: 'images/thumbs/fleet-suzuki-burgman-street-125.jpg', day_rate: 700, week_rate: 600, month_rate: 15000, deposit: 1000, units: 5, sort: 3 },
+  { id: 'tvs-ntorq-125', name: 'TVS NTORQ 125', category: 'Scooty · Sporty', image: 'images/thumbs/fleet-tvs-ntorq-125.jpg', day_rate: 700, week_rate: 600, month_rate: 15000, deposit: 1000, units: 5, sort: 4 },
+  { id: 'royal-enfield-hunter-350', name: 'Royal Enfield Hunter 350', category: 'Bike · 350cc', image: 'images/thumbs/fleet-royal-enfield-hunter-350.jpg', day_rate: 1500, week_rate: 0, month_rate: 0, deposit: 1000, units: 3, sort: 5 },
 ];
 
 export const DEFAULT_SETTINGS = {
@@ -70,6 +73,7 @@ export const DEFAULT_SETTINGS = {
   pay_mode: 'rent',          // rent | rent_deposit | advance | none
   advance_amount: '500',
   week_rate_scooty: '600',  // ₹/day for scooties on 7+ day bookings; saving a new value updates every scooty
+  month_rate_scooty: '15000', // ₹ per 30 days for scooties on 30+ day bookings; saving a new value updates every scooty
   default_deposit: '1000',  // refundable deposit per vehicle; saving a new value updates every vehicle
   delivery_fee: '200',
   collection_fee: '200',
@@ -113,8 +117,8 @@ export function ensureSchema(env) {
       const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM vehicles').first();
       if (!row || !row.n) {
         await env.DB.batch(SEED_VEHICLES.map((v) =>
-          env.DB.prepare('INSERT OR IGNORE INTO vehicles (id,name,category,tagline,image,day_rate,week_rate,deposit,units,active,sort) VALUES (?,?,?,?,?,?,?,?,?,1,?)')
-            .bind(v.id, v.name, v.category, v.tagline || null, v.image, v.day_rate, v.week_rate || 0, v.deposit, v.units, v.sort)));
+          env.DB.prepare('INSERT OR IGNORE INTO vehicles (id,name,category,tagline,image,day_rate,week_rate,month_rate,deposit,units,active,sort) VALUES (?,?,?,?,?,?,?,?,?,?,1,?)')
+            .bind(v.id, v.name, v.category, v.tagline || null, v.image, v.day_rate, v.week_rate || 0, v.month_rate || 0, v.deposit, v.units, v.sort)));
       }
     })().catch((e) => { schemaReadyFor.delete(env.DB); throw e; });
     schemaReadyFor.set(env.DB, schemaReady);

@@ -298,18 +298,19 @@ async function saveVehicle(env, d) {
   const name = str(d.name, 80);
   if (!id || !name) throw bad('A vehicle needs an ID and a name.');
   const day_rate = int(d.day_rate), units = int(d.units);
-  let week_rate = int(d.week_rate);
-  if (week_rate == null && !('week_rate' in d)) week_rate = (await env.DB.prepare('SELECT week_rate FROM vehicles WHERE id = ?').bind(id).first())?.week_rate;
-  week_rate = week_rate || 0;
+  const existing = await env.DB.prepare('SELECT week_rate, month_rate FROM vehicles WHERE id = ?').bind(id).first();
+  // A form that doesn't send these keeps the vehicle's current weekly / monthly price.
+  const week_rate = ('week_rate' in d ? int(d.week_rate) : existing?.week_rate) || 0;
+  const month_rate = ('month_rate' in d ? int(d.month_rate) : existing?.month_rate) || 0;
   let deposit = int(d.deposit);
   if (deposit == null) deposit = int((await getSettings(env)).default_deposit) ?? 0;
   if (!day_rate) throw bad('Enter a day rate.');
   if (units == null) throw bad('Enter how many of this vehicle you have.');
-  await env.DB.prepare(`INSERT INTO vehicles (id, name, category, tagline, image, day_rate, week_rate, deposit, units, active, sort)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)
+  await env.DB.prepare(`INSERT INTO vehicles (id, name, category, tagline, image, day_rate, week_rate, month_rate, deposit, units, active, sort)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET name=excluded.name, category=excluded.category, tagline=excluded.tagline, image=excluded.image,
-        day_rate=excluded.day_rate, week_rate=excluded.week_rate, deposit=excluded.deposit, units=excluded.units, active=excluded.active, sort=excluded.sort`)
-    .bind(id, name, str(d.category, 60) || 'Scooty', str(d.tagline, 160) || null, str(d.image, 300) || null, day_rate, week_rate, deposit ?? 0, units, d.active === false || d.active === 0 ? 0 : 1, int(d.sort) ?? 0).run();
+        day_rate=excluded.day_rate, week_rate=excluded.week_rate, month_rate=excluded.month_rate, deposit=excluded.deposit, units=excluded.units, active=excluded.active, sort=excluded.sort`)
+    .bind(id, name, str(d.category, 60) || 'Scooty', str(d.tagline, 160) || null, str(d.image, 300) || null, day_rate, week_rate, month_rate, deposit ?? 0, units, d.active === false || d.active === 0 ? 0 : 1, int(d.sort) ?? 0).run();
   return json({ ok: true, vehicles: await listVehicles(env, { all: true }) });
 }
 
@@ -321,7 +322,7 @@ async function updateSettings(env, d) {
   }
   if ('upi_id' in patch && patch.upi_id && !/^[\w.\-]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,63}$/.test(patch.upi_id)) throw bad('That UPI ID doesn\'t look right (example: cloudtrails@okicici).');
   if ('pay_mode' in patch && !['rent', 'rent_deposit', 'advance', 'none'].includes(patch.pay_mode)) throw bad('Unknown payment mode.');
-  for (const k of ['default_deposit', 'week_rate_scooty', 'delivery_fee', 'collection_fee', 'advance_amount', 'open_hour', 'close_hour', 'min_lead_hours', 'max_days', 'doc_retention_days']) {
+  for (const k of ['default_deposit', 'week_rate_scooty', 'month_rate_scooty', 'delivery_fee', 'collection_fee', 'advance_amount', 'open_hour', 'close_hour', 'min_lead_hours', 'max_days', 'doc_retention_days']) {
     if (k in patch && (patch[k] === '' || int(patch[k]) == null)) throw bad(`${k.replace(/_/g, ' ')} must be a number.`);
   }
   if ('whatsapp' in patch) patch.whatsapp = patch.whatsapp.replace(/\D/g, '');
@@ -334,6 +335,9 @@ async function updateSettings(env, d) {
   // A new weekly price applies to every scooty (bikes have their own, set in Fleet & prices).
   if ('week_rate_scooty' in patch && (patch.week_rate_scooty !== before.week_rate_scooty || d.apply_week_all)) {
     await env.DB.prepare("UPDATE vehicles SET week_rate = ? WHERE category LIKE 'Scooty%'").bind(int(patch.week_rate_scooty)).run();
+  }
+  if ('month_rate_scooty' in patch && (patch.month_rate_scooty !== before.month_rate_scooty || d.apply_month_all)) {
+    await env.DB.prepare("UPDATE vehicles SET month_rate = ? WHERE category LIKE 'Scooty%'").bind(int(patch.month_rate_scooty)).run();
   }
   return json({ ok: true, settings: await getSettings(env) });
 }

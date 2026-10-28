@@ -43,7 +43,7 @@ export async function getConfig(env) {
   return json({
     now: nowIST(),
     settings: publicSettings(settings),
-    vehicles: vehicles.map((v) => ({ id: v.id, name: v.name, category: v.category, tagline: v.tagline, image: v.image, day_rate: v.day_rate, week_rate: v.week_rate || 0, deposit: v.deposit })),
+    vehicles: vehicles.map((v) => ({ id: v.id, name: v.name, category: v.category, tagline: v.tagline, image: v.image, day_rate: v.day_rate, week_rate: v.week_rate || 0, month_rate: v.month_rate || 0, deposit: v.deposit })),
     terms: { version: TERMS_VERSION, agreement: AGREEMENT, consents: CONSENTS },
     id_types: ID_TYPES,
     max_vehicles: MAX_VEHICLES,
