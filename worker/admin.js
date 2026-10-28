@@ -314,6 +314,7 @@ async function deleteBooking(env, id, d) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM booking_items WHERE booking_id = ?').bind(b.id),
     env.DB.prepare('DELETE FROM events WHERE booking_id = ?').bind(b.id),
+    env.DB.prepare('DELETE FROM reminders_sent WHERE booking_id = ?').bind(b.id),
     env.DB.prepare('DELETE FROM bookings WHERE id = ?').bind(b.id),
   ]);
   return json({ ok: true, deleted: b.ref, files: (results || []).length });

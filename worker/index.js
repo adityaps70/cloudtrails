@@ -4,6 +4,7 @@ import { ensureSchema, getSettings, nowISO, logEvent } from './db.js';
 import { getConfig, availability, createBooking, bookingStatus, customerUpload, publicQr, lookupBookings } from './public.js';
 import { handleAdmin } from './admin.js';
 import { purgeBookingDocs } from './storage.js';
+import { sendReturnReminders } from './reminders.js';
 import { json, HttpError } from './util.js';
 
 function allowedOrigin(request, env) {
@@ -123,6 +124,8 @@ export default {
     return route(request, env, ctx);
   },
   scheduled(event, env, ctx) {
-    ctx.waitUntil(purgeOldDocuments(env));
+    // Daily at 03:00 India time: delete old documents. Every 15 minutes: return reminders.
+    if (event.cron === '30 21 * * *') ctx.waitUntil(purgeOldDocuments(env));
+    else ctx.waitUntil(sendReturnReminders(env));
   },
 };

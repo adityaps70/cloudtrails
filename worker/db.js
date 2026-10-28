@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS booking_items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_booking ON booking_items (booking_id);
 CREATE INDEX IF NOT EXISTS idx_items_vehicle ON booking_items (vehicle_id);
+CREATE TABLE IF NOT EXISTS reminders_sent (
+  booking_id INTEGER NOT NULL, kind TEXT NOT NULL, end_at TEXT NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY (booking_id, kind, end_at)
+);
 CREATE TABLE IF NOT EXISTS push_subs (
   id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint TEXT NOT NULL UNIQUE, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
   label TEXT, created_at TEXT NOT NULL, last_ok_at TEXT
