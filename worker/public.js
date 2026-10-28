@@ -155,6 +155,7 @@ export function validateBooking(d, settings, items) {
     errors.consent_name = 'Type your full name exactly as entered above.';
   if (d.terms_version !== TERMS_VERSION) errors.terms = 'The rental agreement was updated. Please reload the page and review it again.';
 
+  clean.selfie_source = d.selfie_source === 'camera' ? 'camera' : 'upload';
   clean.start = d.start; clean.end = d.end;
   return { errors, clean };
 }
@@ -256,7 +257,7 @@ export async function createBooking(request, env, ctx) {
     await env.DB.prepare("UPDATE bookings SET status = 'cancelled', admin_notes = ? WHERE id = ?").bind('Upload failed: ' + e.message, bookingId).run();
     throw new HttpError(500, 'We could not save your documents. Please try again in a minute.');
   }
-  await logEvent(env, bookingId, 'customer', 'created', `${itemsSummary(q.items)}, ${clean.start.replace('T', ' ')} → ${clean.end.replace('T', ' ')}, ${clean.handover === 'delivery' ? 'delivery' : 'counter pickup'} / ${clean.return_mode === 'collection' ? 'collection' : 'counter return'}`);
+  await logEvent(env, bookingId, 'customer', 'created', `${itemsSummary(q.items)}, ${clean.start.replace('T', ' ')} → ${clean.end.replace('T', ' ')}, ${clean.handover === 'delivery' ? 'delivery' : 'counter pickup'} / ${clean.return_mode === 'collection' ? 'collection' : 'counter return'}${clean.selfie_source === 'camera' ? ', selfie taken live with camera' : ''}`);
 
   const booking = await env.DB.prepare('SELECT * FROM bookings WHERE id = ?').bind(bookingId).first();
   ctx?.waitUntil?.(notifyNewBooking(env, settings, booking, new URL(request.url).origin).catch(() => {}));
