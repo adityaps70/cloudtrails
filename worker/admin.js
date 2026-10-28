@@ -297,7 +297,9 @@ async function saveVehicle(env, d) {
   const id = str(d.id, 60).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
   const name = str(d.name, 80);
   if (!id || !name) throw bad('A vehicle needs an ID and a name.');
-  const day_rate = int(d.day_rate), deposit = int(d.deposit), units = int(d.units);
+  const day_rate = int(d.day_rate), units = int(d.units);
+  let deposit = int(d.deposit);
+  if (deposit == null) deposit = int((await getSettings(env)).default_deposit) ?? 0;
   if (!day_rate) throw bad('Enter a day rate.');
   if (units == null) throw bad('Enter how many of this vehicle you have.');
   await env.DB.prepare(`INSERT INTO vehicles (id, name, category, tagline, image, day_rate, deposit, units, active, sort)
@@ -316,11 +318,16 @@ async function updateSettings(env, d) {
   }
   if ('upi_id' in patch && patch.upi_id && !/^[\w.\-]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,63}$/.test(patch.upi_id)) throw bad('That UPI ID doesn\'t look right (example: cloudtrails@okicici).');
   if ('pay_mode' in patch && !['rent', 'rent_deposit', 'advance', 'none'].includes(patch.pay_mode)) throw bad('Unknown payment mode.');
-  for (const k of ['delivery_fee', 'collection_fee', 'advance_amount', 'guide_rate', 'open_hour', 'close_hour', 'min_lead_hours', 'max_days', 'doc_retention_days']) {
+  for (const k of ['default_deposit', 'delivery_fee', 'collection_fee', 'advance_amount', 'guide_rate', 'open_hour', 'close_hour', 'min_lead_hours', 'max_days', 'doc_retention_days']) {
     if (k in patch && (patch[k] === '' || int(patch[k]) == null)) throw bad(`${k.replace(/_/g, ' ')} must be a number.`);
   }
   if ('whatsapp' in patch) patch.whatsapp = patch.whatsapp.replace(/\D/g, '');
+  const before = await getSettings(env);
   await saveSettings(env, patch);
+  // A new deposit amount applies to every vehicle (one vehicle can still be changed in Fleet & prices).
+  if ('default_deposit' in patch && (patch.default_deposit !== before.default_deposit || d.apply_deposit_all)) {
+    await env.DB.prepare('UPDATE vehicles SET deposit = ?').bind(int(patch.default_deposit)).run();
+  }
   return json({ ok: true, settings: await getSettings(env) });
 }
 

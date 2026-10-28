@@ -51,11 +51,11 @@ CREATE INDEX IF NOT EXISTS idx_items_vehicle ON booking_items (vehicle_id);
 const ADDED_COLUMNS = { bookings: { riders: 'TEXT', vehicle_count: 'INTEGER NOT NULL DEFAULT 1' } };
 
 export const SEED_VEHICLES = [
-  { id: 'yamaha-rayzr-125', name: 'Yamaha RayZR 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-yamaha-rayzr-125.jpg', day_rate: 700, deposit: 2000, units: 5, sort: 1 },
-  { id: 'suzuki-avenis-125', name: 'Suzuki Avenis 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-suzuki-avenis-125.jpg', day_rate: 700, deposit: 2000, units: 5, sort: 2 },
-  { id: 'suzuki-burgman-street-125', name: 'Suzuki Burgman Street 125', category: 'Scooty · Maxi comfort', image: 'images/thumbs/fleet-suzuki-burgman-street-125.jpg', day_rate: 700, deposit: 2000, units: 5, sort: 3 },
-  { id: 'tvs-ntorq-125', name: 'TVS NTORQ 125', category: 'Scooty · Sporty', image: 'images/thumbs/fleet-tvs-ntorq-125.jpg', day_rate: 700, deposit: 2000, units: 5, sort: 4 },
-  { id: 'royal-enfield-hunter-350', name: 'Royal Enfield Hunter 350', category: 'Bike · 350cc', image: 'images/thumbs/fleet-royal-enfield-hunter-350.jpg', day_rate: 1500, deposit: 5000, units: 3, sort: 5 },
+  { id: 'yamaha-rayzr-125', name: 'Yamaha RayZR 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-yamaha-rayzr-125.jpg', day_rate: 700, deposit: 1000, units: 5, sort: 1 },
+  { id: 'suzuki-avenis-125', name: 'Suzuki Avenis 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-suzuki-avenis-125.jpg', day_rate: 700, deposit: 1000, units: 5, sort: 2 },
+  { id: 'suzuki-burgman-street-125', name: 'Suzuki Burgman Street 125', category: 'Scooty · Maxi comfort', image: 'images/thumbs/fleet-suzuki-burgman-street-125.jpg', day_rate: 700, deposit: 1000, units: 5, sort: 3 },
+  { id: 'tvs-ntorq-125', name: 'TVS NTORQ 125', category: 'Scooty · Sporty', image: 'images/thumbs/fleet-tvs-ntorq-125.jpg', day_rate: 700, deposit: 1000, units: 5, sort: 4 },
+  { id: 'royal-enfield-hunter-350', name: 'Royal Enfield Hunter 350', category: 'Bike · 350cc', image: 'images/thumbs/fleet-royal-enfield-hunter-350.jpg', day_rate: 1500, deposit: 1000, units: 3, sort: 5 },
 ];
 
 export const DEFAULT_SETTINGS = {
@@ -67,6 +67,7 @@ export const DEFAULT_SETTINGS = {
   pay_mode: 'rent',          // rent | rent_deposit | advance | none
   advance_amount: '500',
   guide_rate: '1000',
+  default_deposit: '1000',  // refundable deposit per vehicle; saving a new value updates every vehicle
   delivery_fee: '200',
   collection_fee: '200',
   delivery_area: 'Anywhere within Shillong city',
