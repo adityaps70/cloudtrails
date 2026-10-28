@@ -241,3 +241,16 @@ test('old documents are purged after the retention period', async () => {
   const { results } = await env.DB.prepare('SELECT kind FROM files').all();
   assert.deepEqual(results.map((x) => x.kind), ['signature']);
 });
+
+test('built-in QR image is served when set', async () => {
+  const env = makeEnv();
+  let r = await call(env, '/api/qr');
+  assert.equal(r.status, 404);
+  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('qr_static_path', 'images/upi-qr.png')").run();
+  r = await call(env, '/api/qr');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /image\/png/);
+  const cfg = await (await call(env, '/api/config')).json();
+  assert.equal(cfg.settings.has_qr, true);
+  assert.equal(cfg.settings.upi_ready, true);
+});
