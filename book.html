@@ -49,29 +49,46 @@
         <!-- STEP 1: RIDE -->
         <section class="bk-step" data-step="0">
           <h2 class="step-title font-display">When are you riding?</h2>
-          <div class="row2">
-            <div class="fld">
-              <label for="start-date">Start</label>
-              <div class="dt"><input class="field" type="date" id="start-date" required><select class="field" id="start-time" aria-label="Start time"></select></div>
-              <p class="err" data-err="start"></p>
-            </div>
-            <div class="fld">
-              <label for="end-date">Return</label>
-              <div class="dt"><input class="field" type="date" id="end-date" required><select class="field" id="end-time" aria-label="Return time"></select></div>
-              <p class="err" data-err="end"></p>
-            </div>
-          </div>
-          <p class="hint" id="duration-hint"></p>
+          <div class="presets" id="presets" role="group" aria-label="How long"></div>
 
-          <h2 class="step-title font-display">Pick your ride</h2>
-          <div class="vehicles" id="vehicles" role="radiogroup" aria-label="Vehicle"></div>
+          <div class="cal-card">
+            <div class="cal-nav">
+              <button type="button" class="cal-arrow" id="cal-prev" aria-label="Previous month"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 18-6-6 6-6"/></svg></button>
+              <p class="cal-hint" id="cal-hint">Tap your pick-up date</p>
+              <button type="button" class="cal-arrow" id="cal-next" aria-label="Next month"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 18 6-6-6-6"/></svg></button>
+            </div>
+            <div class="cal-months" id="cal-months"></div>
+            <div class="cal-times">
+              <div class="tfield">
+                <span class="tf-label">Pick-up</span>
+                <span class="tf-date" id="tf-start">—</span>
+                <span class="tf-time"><select id="start-time" aria-label="Pick-up time"></select></span>
+              </div>
+              <div class="tf-mid"><span class="tf-days" id="tf-days"></span><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16m-5-5 5 5-5 5"/></svg></div>
+              <div class="tfield">
+                <span class="tf-label">Return</span>
+                <span class="tf-date" id="tf-end">—</span>
+                <span class="tf-time"><select id="end-time" aria-label="Return time"></select></span>
+              </div>
+            </div>
+            <input type="hidden" id="start-date"><input type="hidden" id="end-date">
+          </div>
+          <p class="err" data-err="start"></p>
+          <p class="err" data-err="end"></p>
+          <div class="dur-banner" id="duration-hint" hidden></div>
+
+          <div class="pick-head">
+            <h2 class="step-title font-display">Pick your rides</h2>
+            <p class="hint">Riding with friends or family? Add as many as you need — each extra vehicle needs its own rider with a valid licence.</p>
+          </div>
+          <div class="vehicles" id="vehicles"></div>
           <p class="err" data-err="vehicle"></p>
 
           <label class="toggle-card" for="guide">
             <input type="checkbox" id="guide">
             <span class="tc-body">
               <span class="tc-title">Add a local guide <b id="guide-price">+₹1,000 / day</b></span>
-              <span class="tc-sub">A local rider alongside you on their own bike — routes, stories, and knowing exactly where to stop.</span>
+              <span class="tc-sub">A local rider leads your group on their own bike — routes, stories, and knowing exactly where to stop.</span>
             </span>
           </label>
         </section>
@@ -164,6 +181,11 @@
           <p class="hint">A clear selfie, face visible, no sunglasses. We match it with your ID at handover.</p>
           <div class="uploads one">
             <div class="up" data-kind="selfie"></div>
+          </div>
+          <div id="riders-section" hidden>
+            <h2 class="step-title font-display">The other riders</h2>
+            <p class="hint">You're booking <b id="riders-count"></b>. Each extra vehicle needs its own rider with a valid driving licence — add their details below. They'll show the original licence at pick-up.</p>
+            <div class="riders" id="riders"></div>
           </div>
           <p class="hint small">Photos or PDFs, up to 10 MB each. Your documents are stored privately, seen only by Cloud Trails, and deleted within 30 days of your rental.</p>
         </section>
