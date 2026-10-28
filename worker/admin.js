@@ -6,6 +6,7 @@ import { getFile, putFile, deleteFile, purgeBookingDocs } from './storage.js';
 import { DOC_KINDS, docLabel, isDocKind } from './public.js';
 import { quote, nowIST, parseLocal, itemsSummary } from '../js/pricing.js';
 import { json, bad, HttpError, str, sniffMime, csvCell } from './util.js';
+import { vapidKeys, validEndpoint, notifyAdmins } from './push.js';
 
 const STATUSES = ['pending', 'confirmed', 'ongoing', 'completed', 'cancelled', 'rejected'];
 
@@ -42,6 +43,10 @@ export async function handleAdmin(request, env, url) {
   await requireAdmin(request, env);
 
   if (path === '/stats' && m === 'GET') return stats(env);
+  if (path === '/push' && m === 'GET') return pushInfo(env);
+  if (path === '/push/subscribe' && m === 'POST') return pushSubscribe(env, await body(request));
+  if (path === '/push/remove' && m === 'POST') return pushRemove(env, await body(request));
+  if (path === '/push/test' && m === 'POST') return json({ ok: true, ...(await notifyAdmins(env, { title: 'Cloud Trails', body: 'Notifications are working. You\'ll get one like this for every new booking.', url: '/admin/#/', tag: 'test' })) });
   if (path === '/bookings' && m === 'GET') return listBookings(env, url);
   if (path === '/export.csv' && m === 'GET') return exportCsv(env, url);
   if (path === '/schedule' && m === 'GET') return schedule(env, url);
@@ -296,6 +301,33 @@ async function serveFile(env, id, url) {
       'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
     },
   });
+}
+
+/* ---------------- push notifications ---------------- */
+async function pushInfo(env) {
+  const [{ publicKey }, { results }] = await Promise.all([
+    vapidKeys(env),
+    env.DB.prepare('SELECT id, endpoint, label, created_at, last_ok_at FROM push_subs ORDER BY id').all(),
+  ]);
+  return json({ publicKey, devices: results || [] });
+}
+
+async function pushSubscribe(env, d) {
+  const s = d.subscription || {};
+  const endpoint = String(s.endpoint || '');
+  const p256dh = String(s.keys?.p256dh || ''), auth = String(s.keys?.auth || '');
+  if (!validEndpoint(endpoint)) throw bad('This browser\'s push service isn\'t supported.');
+  if (!/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,30}$/.test(auth)) throw bad('Invalid subscription keys.');
+  await env.DB.prepare(`INSERT INTO push_subs (endpoint, p256dh, auth, label, created_at) VALUES (?,?,?,?,?)
+      ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, label = excluded.label`)
+    .bind(endpoint, p256dh, auth, str(d.label, 60) || 'Device', nowISO()).run();
+  return pushInfo(env);
+}
+
+async function pushRemove(env, d) {
+  if (d.endpoint) await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(String(d.endpoint)).run();
+  else if (int(d.id) != null) await env.DB.prepare('DELETE FROM push_subs WHERE id = ?').bind(int(d.id)).run();
+  return pushInfo(env);
 }
 
 async function saveVehicle(env, d) {

@@ -7,6 +7,7 @@ import { quote, nowIST, parseLocal, rentalDays, itemsSummary } from '../js/prici
 import { json, bad, HttpError, clientIp, randomRef, randomHex, sha256Hex, str, normPhone, isEmail, isDate, sniffMime } from './util.js';
 import { notifyNewBooking } from './notify.js';
 import { signBookingAccess, verifyBookingAccess } from './auth.js';
+import { notifyAdmins, newBookingMessage } from './push.js';
 
 export const DOC_KINDS = {
   licence_front: { label: 'Driving licence (front)', required: true },
@@ -262,6 +263,7 @@ export async function createBooking(request, env, ctx) {
 
   const booking = await env.DB.prepare('SELECT * FROM bookings WHERE id = ?').bind(bookingId).first();
   ctx?.waitUntil?.(notifyNewBooking(env, settings, booking, new URL(request.url).origin).catch(() => {}));
+  ctx?.waitUntil?.(notifyAdmins(env, newBookingMessage(booking)).catch(() => {}));
 
   return json({ ok: true, ref, token, total: q.total, pay_now: q.pay_now, deposit: q.deposit }, 201);
 }
