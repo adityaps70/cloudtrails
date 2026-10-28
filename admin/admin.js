@@ -667,7 +667,8 @@ async function fleet() {
 
 /* ---------------- settings ---------------- */
 async function settings() {
-  const { settings: s } = await api('/settings');
+  const [{ settings: s }, { vehicles: fleetList }] = await Promise.all([api('/settings'), api('/vehicles')]);
+  const depOdd = fleetList.filter((v) => String(v.deposit) !== String(s.default_deposit));
   const f = (k, label, attrs = '', help = '') => `<div class="f"><label class="lb" for="s-${k}">${label}</label><input class="in" id="s-${k}" data-k="${k}" value="${esc(s[k])}" ${attrs}>${help ? `<p class="small muted" style="margin:.3rem 0 0">${help}</p>` : ''}</div>`;
   const bookingUrl = new URL('../book.html', location.href).href;
   view.innerHTML = `
@@ -676,7 +677,7 @@ async function settings() {
       <div>
         <div class="card"><h2>Online booking</h2>
           <label class="switch"><input type="checkbox" data-k="booking_enabled" ${s.booking_enabled === '1' ? 'checked' : ''}> Accept bookings online</label>
-          <p class="small muted">When off, the booking page asks customers to WhatsApp you instead.</p>
+          <p class="small muted">When off, the booking page asks customers to call you instead.</p>
           <p class="small">Booking page: <a class="link" href="${esc(bookingUrl)}" target="_blank" rel="noopener">${esc(bookingUrl)}</a></p></div>
 
         <div class="card"><h2>UPI payment</h2>
@@ -695,6 +696,11 @@ async function settings() {
           ${!s.upi_id && !s.qr_file_id && !s.qr_static_path ? '<div class="alert warn">Add a UPI ID or QR image — until then customers are told to pay at handover.</div>' : ''}</div>
       </div>
       <div>
+        <div class="card"><h2>Refundable deposit</h2>
+          ${f('default_deposit', 'Deposit per vehicle (₹)', 'type="number" min="0" step="100"', 'Taken at handover and returned when the vehicle comes back. Saving a new amount updates every vehicle. To charge a different deposit for one vehicle, change it in Fleet &amp; prices.')}
+          ${depOdd.length ? `<p class="small muted" style="margin:.2rem 0 0">Different right now: ${depOdd.map((v) => `${esc(v.name)} ${inr(v.deposit)}`).join(' · ')}</p>
+          <label class="switch" style="margin-top:.5rem"><input type="checkbox" id="dep-all"> Set these to the amount above too</label>` : ''}</div>
+
         <div class="card"><h2>Pickup &amp; drop</h2>
           <div class="grid2">${f('delivery_fee', 'Doorstep delivery fee (₹)', 'type="number" min="0"')}${f('collection_fee', 'Doorstep collection fee (₹)', 'type="number" min="0"')}</div>
           ${f('delivery_area', 'Delivery area (shown to customers)')}
@@ -715,6 +721,7 @@ async function settings() {
   $('#save').addEventListener('click', async () => {
     const d = {};
     $$('[data-k]').forEach((i) => { d[i.dataset.k] = i.type === 'checkbox' ? (i.checked ? '1' : '0') : i.value.trim(); });
+    if ($('#dep-all')?.checked) d.apply_deposit_all = true;
     try { await post('/settings', d); toast('Settings saved'); settings(); } catch (e) { toast(e.message); }
   });
   $('#qr-file').addEventListener('change', async () => {
