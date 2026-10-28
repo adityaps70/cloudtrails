@@ -529,3 +529,61 @@ test('admin can permanently delete a booking with its documents', async () => {
   r = await call(env, `/api/bookings/${created.ref}?t=${created.token}`);
   assert.equal(r.status, 404);
 });
+
+test('return reminders: 4h for short rentals; 1d + 4h for 4–14 days; 5d + 1d + 4h for 15+ days', async () => {
+  const { sendReturnReminders, remindersFor } = await import('../worker/reminders.js');
+  assert.deepEqual(remindersFor(1), ['4h']);
+  assert.deepEqual(remindersFor(3), ['4h']);
+  assert.deepEqual(remindersFor(4), ['1d', '4h']);
+  assert.deepEqual(remindersFor(14), ['1d', '4h']);
+  assert.deepEqual(remindersFor(15), ['5d', '1d', '4h']);
+  assert.deepEqual(remindersFor(30), ['5d', '1d', '4h']);
+
+  const env = makeEnv();
+  const cookie = await adminCookie(env);
+  const mk = async (days, phone) => {
+    const r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(bookingData({ start: day(1) + 'T10:00', end: day(1 + days) + 'T10:00', phone, emergency_phone: '9876500099' })) });
+    const j = await r.json();
+    assert.equal(r.status, 201, JSON.stringify(j));
+    const b = await env.DB.prepare('SELECT id, end_at FROM bookings WHERE ref = ?').bind(j.ref).first();
+    await admin(env, cookie, `/bookings/${b.id}/action`, { action: 'confirm' });
+    return b;
+  };
+  const short = await mk(2, '9876511001'), week = await mk(7, '9876511002'), long = await mk(20, '9876511003');
+  await env.DB.prepare("INSERT INTO push_subs (endpoint, p256dh, auth, label, created_at) VALUES ('https://web.push.apple.com/x', ?, ?, 'iPhone', '2026-01-01')")
+    .bind('BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', 'tBHItJI5svbpez7KI4CCXg').run();
+  const realFetch = globalThis.fetch;
+  const sent = [];
+  globalThis.fetch = async (url) => { sent.push(url); return new Response(null, { status: 201 }); };
+  const at = (b, hoursBefore) => new Date(Date.parse(b.end_at + ':00Z') - hoursBefore * 3600 * 1000).toISOString().slice(0, 16);
+  const kinds = async (b) => (await env.DB.prepare('SELECT kind FROM reminders_sent WHERE booking_id = ? ORDER BY kind').bind(b.id).all()).results.map((r) => r.kind);
+  try {
+    // 6 days before the long rental ends: nothing due anywhere
+    assert.equal(await sendReturnReminders(env, at(long, 6 * 24)), 0);
+    // 5 days before: the long rental's first reminder
+    assert.equal(await sendReturnReminders(env, at(long, 5 * 24 - 0.1)), 1);
+    assert.deepEqual(await kinds(long), ['5d']);
+    // Running again sends nothing new
+    assert.equal(await sendReturnReminders(env, at(long, 5 * 24 - 0.2)), 0);
+    // 1 day before the week rental
+    assert.equal(await sendReturnReminders(env, at(week, 23.9)), 1);
+    assert.deepEqual(await kinds(week), ['1d']);
+    // 4 hours before the short rental (it never gets a 1-day reminder)
+    assert.equal(await sendReturnReminders(env, at(short, 3.9)), 1);
+    assert.deepEqual(await kinds(short), ['4h']);
+    // 3 hours before the week rental: its 4h reminder
+    assert.equal(await sendReturnReminders(env, at(week, 3)), 1);
+    assert.deepEqual(await kinds(week), ['1d', '4h']);
+    // Long rental, 2 hours before the end: 1d was missed, only the closest (4h) is sent, both marked done
+    assert.equal(await sendReturnReminders(env, at(long, 2)), 1);
+    assert.deepEqual(await kinds(long), ['1d', '4h', '5d']);
+    assert.equal(sent.length, 5);
+    // History shows the reminder
+    const ev = await env.DB.prepare("SELECT detail FROM events WHERE booking_id = ? AND action = 'return_reminder'").bind(short.id).all();
+    assert.match(ev.results[0].detail, /4 hours before return — sent to 1 device/);
+    // Cancelled bookings get nothing
+    await admin(env, cookie, `/bookings/${short.id}/action`, { action: 'cancel', message: 'x' });
+    await env.DB.prepare('DELETE FROM reminders_sent WHERE booking_id = ?').bind(short.id).run();
+    assert.equal(await sendReturnReminders(env, at(short, 1)), 0);
+  } finally { globalThis.fetch = realFetch; }
+});
