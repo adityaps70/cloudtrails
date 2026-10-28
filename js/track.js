@@ -69,13 +69,12 @@ function render(b) {
 
   const row = (k, v) => `<div class="rv-row" style="grid-template-columns:6.5rem 1fr"><span>${k}</span><b>${v}</b></div>`;
   $('#t-details').innerHTML =
-    row('Ride', esc(b.vehicle_name) + (b.guide ? ' + local guide' : '')) +
+    row('Ride', esc(b.vehicle_name)) +
     row('Dates', `${esc(fmtWhen(b.start))} → ${esc(fmtWhen(b.end))} · ${b.days} day${b.days > 1 ? 's' : ''}`) +
     row('Handover', b.handover === 'delivery' ? 'Delivered to ' + esc(b.handover_address) : 'Pick up at ' + esc(st.counter_address)) +
     row('Return', b.return_mode === 'collection' ? 'Collected from ' + esc(b.return_address) : 'Return to the counter') +
     `<ul class="rv-lines">
       <li><span>Rent</span><b>${inr(b.rent)}</b></li>
-      ${b.guide_fee ? `<li><span>Guide</span><b>${inr(b.guide_fee)}</b></li>` : ''}
       ${b.delivery_fee ? `<li><span>Doorstep delivery</span><b>${inr(b.delivery_fee)}</b></li>` : ''}
       ${b.collection_fee ? `<li><span>Doorstep collection</span><b>${inr(b.collection_fee)}</b></li>` : ''}
       <li class="tot"><span>Rental total</span><b>${inr(b.total)}</b></li>

@@ -84,7 +84,6 @@ async function boot() {
   restoreDraft();
   $$('.dpick').forEach((el) => el.load());
   bindNav();
-  $('#guide-price').textContent = `+${inr(st.guide_rate)} / day`;
   $('#delivery-price').textContent = Number(st.delivery_fee) ? inr(st.delivery_fee) : 'Free';
   $('#collection-price').textContent = Number(st.collection_fee) ? inr(st.collection_fee) : 'Free';
   $('#delivery-area').textContent = st.delivery_area;
@@ -140,7 +139,6 @@ function setupDates() {
   $('#end-time').value = '10:00';
   const v = p.get('vehicle');
   if (v && S.vehicles.some((x) => x.id === v)) S.cart[v] = 1;
-  if (p.get('guide') === '1') $('#guide').checked = true;
   S.view = sd.slice(0, 7);
 }
 
@@ -264,9 +262,9 @@ function renderPresets() {
   const list = [
     { days: 1, label: '1 day', sub: `from ${inr(scooty)}` },
     { days: 2, label: '2 days', sub: `from ${inr(scooty * 2)}` },
-    { days: 3, label: '3 days', sub: '10% off', tag: true },
-    { days: 7, label: '1 week', sub: `${inr(perDay(scooty, 7))}/day`, tag: true, best: true },
-    { days: 14, label: '2 weeks', sub: `${inr(perDay(scooty, 14))}/day`, tag: true },
+    { days: 3, label: '3 days', sub: `from ${inr(scooty * 3)}` },
+    { days: 7, label: '1 week', sub: `${inr(weekRate())}/day`, tag: weekRate() < scooty, best: weekRate() < scooty },
+    { days: 14, label: '2 weeks', sub: `${inr(weekRate())}/day`, tag: weekRate() < scooty },
   ].filter((p) => p.days <= maxDays());
   $('#presets').innerHTML = list.map((p) =>
     `<button type="button" class="preset${cur === p.days ? ' is-on' : ''}${p.best ? ' is-best' : ''}" data-days="${p.days}">
@@ -290,6 +288,8 @@ function renderPresets() {
 }
 
 function minRate() { return Math.min(...S.vehicles.map((v) => v.day_rate)); }
+/** Cheapest per-day price on a 7+ day booking (the weekly price). */
+function weekRate() { return Math.min(...S.vehicles.map((v) => perDay(v.day_rate, 7, v.week_rate))); }
 
 /* ---------------- availability ---------------- */
 let availTimer = 0, availSeq = 0;
@@ -330,10 +330,11 @@ function renderVehicles() {
     const qty = S.cart[v.id] || 0;
     const out = known && left === 0;
     const badge = !known ? '' : out ? '<span class="badge out">Booked out</span>' : left <= 2 ? `<span class="badge low">Only ${left} left</span>` : `<span class="badge ok">${left} available</span>`;
-    const eff = days ? perDay(v.day_rate, days) : v.day_rate;
+    const eff = days ? perDay(v.day_rate, days, v.week_rate) : v.day_rate;
+    const wk = perDay(v.day_rate, 7, v.week_rate);
     const price = eff < v.day_rate
-      ? `<b>${inr(eff)}</b><span>/day</span> <s>${inr(v.day_rate)}</s> <em>${days >= 7 ? 'weekly rate' : '10% off'}</em>`
-      : `<b>${inr(v.day_rate)}</b><span>/day</span>`;
+      ? `<b>${inr(eff)}</b><span>/day</span> <s>${inr(v.day_rate)}</s> <em>weekly price</em>`
+      : `<b>${inr(v.day_rate)}</b><span>/day</span>${wk < v.day_rate ? `<i class="wk">${inr(wk)}/day when you book 7+ days</i>` : ''}`;
     const canAdd = !out && (left == null || qty < left) && total < S.max;
     return `<div class="veh${out ? ' is-out' : ''}${qty ? ' is-on' : ''}" data-id="${esc(v.id)}">
       <button type="button" class="veh-pick" ${out ? 'disabled' : ''} aria-label="${qty ? 'Selected' : 'Add'}: ${esc(v.name)}">
@@ -755,7 +756,7 @@ function onAnyChange(e) {
 
 function currentQuote() {
   return quote({
-    items: cartItems(), start: startVal(), end: endVal(), guide: $('#guide').checked,
+    items: cartItems(), start: startVal(), end: endVal(),
     delivery: radio('handover') === 'delivery', collection: radio('return_mode') === 'collection', settings: S.cfg.settings,
   });
 }
@@ -768,12 +769,14 @@ function update() {
   const days = rentalDays(s, e);
 
   const banner = $('#duration-hint');
-  if (days >= 3) {
+  const wk = weekRate(), base = minRate();
+  if (wk < base && days >= 7) {
     const save = items.length ? q.savings : 0;
     banner.hidden = false;
-    banner.innerHTML = days >= 7
-      ? `<b>${days} days · weekly rate.</b> Scooties work out to ${inr(perDay(minRate(), days))} a day instead of ${inr(minRate())}${save ? ` — you save <em>${inr(save)}</em>` : ''}.`
-      : `<b>${days} days · 10% off every day.</b>${save ? ` You save <em>${inr(save)}</em>.` : ''} Make it a week for the weekly rate.`;
+    banner.innerHTML = `<b>${days} days · weekly price.</b> Scooties are ${inr(wk)} a day instead of ${inr(base)}${save ? ` — you save <em>${inr(save)}</em>` : ''}.`;
+  } else if (wk < base && days >= 4) {
+    banner.hidden = false;
+    banner.innerHTML = `<b>Staying longer?</b> Book 7 days or more and scooties drop to ${inr(wk)} a day.`;
   } else banner.hidden = true;
 
   const one = items[0]?.vehicle;
@@ -781,7 +784,7 @@ function update() {
     : items.length > 1 ? `<div class="sum-stack">${items.slice(0, 3).map((i) => `<img src="${esc(i.vehicle.image)}" alt="">`).join('')}</div>` : '';
   const count = cartCount();
   $('#sum-cat').textContent = count > 1 ? `${count} vehicles` : one ? one.category : 'Your ride';
-  $('#sum-name').textContent = items.length ? itemsSummary(q.items) + ($('#guide').checked ? ' + guide' : '') : 'Choose your ride';
+  $('#sum-name').textContent = items.length ? itemsSummary(q.items) : 'Choose your ride';
   $('#sum-dates').innerHTML = s && e ? `${esc(fmtWhen(s))} <span>→</span> ${esc(fmtWhen(e))}` : '';
   const hand = radio('handover') === 'delivery' ? 'Delivered to you' : 'Pick up at Nongrim Hills';
   const ret = radio('return_mode') === 'collection' ? 'collected from you' : 'return to counter';
@@ -953,7 +956,7 @@ function renderReview() {
   const need = Math.max(0, cartCount() - 1);
   const row = (k, v2, step) => `<div class="rv-row"><span>${k}</span><b>${v2}</b>${step != null ? `<button type="button" class="link-btn" data-goto="${step}">Edit</button>` : ''}</div>`;
   $('#review').innerHTML =
-    row(cartCount() > 1 ? 'Rides' : 'Ride', esc(itemsSummary(q.items)) + ($('#guide').checked ? ' + local guide' : ''), 0) +
+    row(cartCount() > 1 ? 'Rides' : 'Ride', esc(itemsSummary(q.items)), 0) +
     row('Dates', `${esc(fmtWhen(startVal()))} → ${esc(fmtWhen(endVal()))} · ${q.days} day${q.days > 1 ? 's' : ''}`, 0) +
     row('Handover', del ? 'Delivered to ' + esc(val('handover_address')) : 'Pick up at our Nongrim Hills counter', 1) +
     row('Return', col ? 'Collected from ' + esc(same ? val('handover_address') : val('return_address')) : 'Return to the counter', 1) +
@@ -1046,7 +1049,7 @@ async function submit() {
   const data = {
     items: cartItems().map((i) => ({ vehicle_id: i.vehicle.id, qty: i.qty })),
     riders: S.riders.slice(0, need),
-    start: startVal(), end: endVal(), guide: $('#guide').checked,
+    start: startVal(), end: endVal(),
     handover: radio('handover'), handover_address: val('handover_address'), handover_landmark: val('handover_landmark'),
     return_mode: radio('return_mode'), return_address: same ? val('handover_address') : val('return_address'),
     name: val('name'), phone: val('phone'), email: val('email'), dob: val('dob'), address: val('address'), hometown: val('hometown'),
