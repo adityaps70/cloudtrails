@@ -92,7 +92,7 @@ async function publicRoute(request, env, ctx, url) {
   if (p === '/api/health') return json({ ok: true, time: nowISO() });
   if (p === '/api/config' && m === 'GET') return getConfig(env);
   if (p === '/api/availability' && m === 'GET') return availability(env, url);
-  if (p === '/api/qr' && m === 'GET') return publicQr(env);
+  if (p === '/api/qr' && m === 'GET') return publicQr(env, request);
   if (p === '/api/bookings' && m === 'POST') return createBooking(request, env, ctx);
   let mm;
   if ((mm = p.match(/^\/api\/bookings\/(CT-[A-Z0-9]{6})$/)) && m === 'GET') return bookingStatus(env, mm[1], url.searchParams.get('t'));

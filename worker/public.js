@@ -22,8 +22,8 @@ const ID_TYPES = ['Aadhaar', 'Passport', 'Voter ID', 'PAN card', 'Other governme
 function publicSettings(s) {
   const out = {};
   for (const k of PUBLIC_SETTINGS) out[k] = s[k];
-  out.upi_ready = Boolean(s.upi_id || s.qr_file_id);
-  out.has_qr = Boolean(s.qr_file_id);
+  out.upi_ready = Boolean(s.upi_id || s.qr_file_id || s.qr_static_path);
+  out.has_qr = Boolean(s.qr_file_id || s.qr_static_path);
   return out;
 }
 
@@ -172,7 +172,7 @@ export async function createBooking(request, env, ctx) {
   }
 
   const q = vehicle ? quote({ vehicle, start: clean.start, end: clean.end, guide: clean.guide, delivery: clean.handover === 'delivery', collection: clean.return_mode === 'collection', settings }) : null;
-  const upiReady = Boolean(settings.upi_id || settings.qr_file_id);
+  const upiReady = Boolean(settings.upi_id || settings.qr_file_id || settings.qr_static_path);
   const paymentNeeded = q && q.pay_now > 0 && upiReady;
   if (paymentNeeded && !uploads.payment && !errors.payment) errors.payment = 'Upload the screenshot of your UPI payment.';
 
@@ -294,10 +294,16 @@ export async function customerUpload(request, env, ref, token) {
   return json({ ok: true, saved });
 }
 
-export async function publicQr(env) {
+export async function publicQr(env, request) {
   const s = await getSettings(env);
-  if (!s.qr_file_id) return new Response('Not found', { status: 404 });
-  const f = await getFile(env, s.qr_file_id);
-  if (!f || f.row.kind !== 'qr') return new Response('Not found', { status: 404 });
-  return new Response(f.body, { headers: { 'content-type': f.row.mime, 'cache-control': 'public, max-age=300' } });
+  if (s.qr_file_id) {
+    const f = await getFile(env, s.qr_file_id);
+    if (f && f.row.kind === 'qr') return new Response(f.body, { headers: { 'content-type': f.row.mime, 'cache-control': 'public, max-age=300' } });
+  }
+  const path = String(s.qr_static_path || '').replace(/^\/+/, '');
+  if (/^images\/[\w.\-\/]+\.(png|jpe?g|webp)$/.test(path) && env.ASSETS) {
+    const r = await env.ASSETS.fetch(new Request(new URL('/' + path, request.url)));
+    if (r.ok) return new Response(r.body, { headers: { 'content-type': r.headers.get('content-type') || 'image/png', 'cache-control': 'public, max-age=300' } });
+  }
+  return new Response('Not found', { status: 404 });
 }

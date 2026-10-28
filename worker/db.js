@@ -69,6 +69,7 @@ export const DEFAULT_SETTINGS = {
   doc_retention_days: '30',
   notify_email: '',
   qr_file_id: '',
+  qr_static_path: '',      // a QR image shipped with the site (e.g. images/upi-qr.png), used when none is uploaded
 };
 
 // Settings the public booking page may see.
