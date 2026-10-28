@@ -1,5 +1,5 @@
 // Cloud Trails — online booking flow (book.html).
-import { quote, inr, rentalDays, nowIST, parseLocal, perDay, itemsSummary } from './pricing.js';
+import { quote, inr, rentalDays, nowIST, parseLocal, perDay, priceFor, itemsSummary } from './pricing.js';
 
 const API = window.CT_API || '';
 const $ = (s, r = document) => r.querySelector(s);
@@ -264,7 +264,7 @@ function renderPresets() {
     { days: 2, label: '2 days', sub: `from ${inr(scooty * 2)}` },
     { days: 3, label: '3 days', sub: `from ${inr(scooty * 3)}` },
     { days: 7, label: '1 week', sub: `${inr(weekRate())}/day`, tag: weekRate() < scooty, best: weekRate() < scooty },
-    { days: 14, label: '2 weeks', sub: `${inr(weekRate())}/day`, tag: weekRate() < scooty },
+    ...(monthRate() ? [{ days: 30, label: '1 month', sub: inr(monthRate()), tag: true }] : [{ days: 14, label: '2 weeks', sub: `${inr(weekRate())}/day`, tag: weekRate() < scooty }]),
   ].filter((p) => p.days <= maxDays());
   $('#presets').innerHTML = list.map((p) =>
     `<button type="button" class="preset${cur === p.days ? ' is-on' : ''}${p.best ? ' is-best' : ''}" data-days="${p.days}">
@@ -290,6 +290,8 @@ function renderPresets() {
 function minRate() { return Math.min(...S.vehicles.map((v) => v.day_rate)); }
 /** Cheapest per-day price on a 7+ day booking (the weekly price). */
 function weekRate() { return Math.min(...S.vehicles.map((v) => perDay(v.day_rate, 7, v.week_rate))); }
+/** Cheapest monthly price (per 30 days), or 0 when no vehicle has one. */
+function monthRate() { const m = S.vehicles.map((v) => Number(v.month_rate) || 0).filter((x) => x > 0); return m.length ? Math.min(...m) : 0; }
 
 /* ---------------- availability ---------------- */
 let availTimer = 0, availSeq = 0;
@@ -330,11 +332,13 @@ function renderVehicles() {
     const qty = S.cart[v.id] || 0;
     const out = known && left === 0;
     const badge = !known ? '' : out ? '<span class="badge out">Booked out</span>' : left <= 2 ? `<span class="badge low">Only ${left} left</span>` : `<span class="badge ok">${left} available</span>`;
-    const eff = days ? perDay(v.day_rate, days, v.week_rate) : v.day_rate;
+    const pr = days ? priceFor(v, days) : { per: v.day_rate, tier: 'day' };
     const wk = perDay(v.day_rate, 7, v.week_rate);
-    const price = eff < v.day_rate
-      ? `<b>${inr(eff)}</b><span>/day</span> <s>${inr(v.day_rate)}</s> <em>weekly price</em>`
-      : `<b>${inr(v.day_rate)}</b><span>/day</span>${wk < v.day_rate ? `<i class="wk">${inr(wk)}/day when you book 7+ days</i>` : ''}`;
+    const mo = Number(v.month_rate) || 0;
+    const longer = [wk < v.day_rate ? `${inr(wk)}/day for 7+ days` : '', mo && mo < v.day_rate * 30 ? `${inr(mo)} a month` : ''].filter(Boolean).join(' · ');
+    const price = pr.tier !== 'day'
+      ? `<b>${inr(pr.per)}</b><span>/day</span> <s>${inr(v.day_rate)}</s> <em>${pr.tier === 'month' ? 'monthly price' : 'weekly price'}</em>`
+      : `<b>${inr(v.day_rate)}</b><span>/day</span>${longer ? `<i class="wk">${longer}</i>` : ''}`;
     const canAdd = !out && (left == null || qty < left) && total < S.max;
     return `<div class="veh${out ? ' is-out' : ''}${qty ? ' is-on' : ''}" data-id="${esc(v.id)}">
       <button type="button" class="veh-pick" ${out ? 'disabled' : ''} aria-label="${qty ? 'Selected' : 'Add'}: ${esc(v.name)}">
@@ -344,7 +348,7 @@ function renderVehicles() {
         <span class="veh-cat">${esc(v.category)}</span>
         <span class="veh-name font-display">${esc(v.name)}</span>
         <span class="veh-price">${price}</span>
-        <span class="veh-dep">Deposit ${inr(v.deposit)}${days ? ` · ${inr(eff * days)} for ${days} day${days > 1 ? 's' : ''}` : ''}</span>
+        <span class="veh-dep">Deposit ${inr(v.deposit)}${days ? ` · ${inr(pr.rent ?? pr.per * days)} for ${days} day${days > 1 ? 's' : ''}` : ''}</span>
         <div class="veh-actions">
           ${qty ? `<div class="stepper" role="group" aria-label="How many ${esc(v.name)}">
               <button type="button" data-step="-1" aria-label="One less">−</button>
@@ -769,8 +773,15 @@ function update() {
   const days = rentalDays(s, e);
 
   const banner = $('#duration-hint');
-  const wk = weekRate(), base = minRate();
-  if (wk < base && days >= 7) {
+  const wk = weekRate(), base = minRate(), mo = monthRate();
+  if (mo && days >= 30) {
+    const save = items.length ? q.savings : 0;
+    banner.hidden = false;
+    banner.innerHTML = `<b>${days} days · monthly price.</b> Scooties are ${inr(mo)} for 30 days (${inr(Math.round(mo / 30))} a day)${save ? ` — you save <em>${inr(save)}</em>` : ''}.`;
+  } else if (mo && days >= 21 && mo < wk * days) {
+    banner.hidden = false;
+    banner.innerHTML = `<b>Nearly a month?</b> Book 30 days and scooties are just ${inr(mo)} for the whole month.`;
+  } else if (wk < base && days >= 7) {
     const save = items.length ? q.savings : 0;
     banner.hidden = false;
     banner.innerHTML = `<b>${days} days · weekly price.</b> Scooties are ${inr(wk)} a day instead of ${inr(base)}${save ? ` — you save <em>${inr(save)}</em>` : ''}.`;

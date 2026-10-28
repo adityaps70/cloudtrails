@@ -2,8 +2,10 @@
 // The server always recalculates; the browser copy is only for showing the live total.
 //
 // Rules:
-//   1–6 days : day rate × days
-//   7+ days  : the vehicle's weekly price per day (e.g. scooty ₹600 instead of ₹700), if it has one
+//   1–6 days  : day rate × days
+//   7+ days   : the vehicle's weekly price per day (e.g. scooty ₹600 instead of ₹700), if it has one
+//   30+ days  : the vehicle's monthly price per 30 days, pro-rated per day (e.g. scooty ₹15,000 = ₹500/day), if it has one
+// The cheapest price that applies is used.
 // A rental day is 24 hours, with a 1-hour grace period before the next day is charged.
 
 export const IST_OFFSET_MS = 330 * 60 * 1000;
@@ -27,25 +29,33 @@ export function rentalDays(start, end) {
   return Math.max(1, Math.ceil((hours - 1) / 24));
 }
 
-/** Price per day for a rental of `days` days: the weekly price for 7+ days (when set and lower), else the day rate. */
-export function perDay(dayRate, days, weekRate) {
-  dayRate = Number(dayRate) || 0;
-  const w = Number(weekRate) || 0;
-  return days >= 7 && w > 0 && w < dayRate ? w : dayRate;
+/**
+ * Rent for one vehicle over `days` days, and which price was used.
+ * @returns {{ rent:number, per:number, tier:'day'|'week'|'month' }}
+ */
+export function priceFor(vehicle, days) {
+  const day = Number(vehicle?.day_rate) || 0;
+  const w = Number(vehicle?.week_rate) || 0;
+  const m = Number(vehicle?.month_rate) || 0;
+  if (days <= 0) return { rent: 0, per: day, tier: 'day' };
+  let best = { rent: day * days, tier: 'day' };
+  if (days >= 7 && w > 0 && w * days < best.rent) best = { rent: w * days, tier: 'week' };
+  if (days >= 30 && m > 0 && Math.round((m * days) / 30) < best.rent) best = { rent: Math.round((m * days) / 30), tier: 'month' };
+  return { ...best, per: Math.round(best.rent / days) };
 }
 
-export function rentFor(dayRate, days, weekRate) {
-  return days > 0 ? perDay(dayRate, days, weekRate) * days : 0;
+/** Price per day for a rental of `days` days (after any weekly / monthly price). */
+export function perDay(dayRate, days, weekRate, monthRate) {
+  return priceFor({ day_rate: dayRate, week_rate: weekRate, month_rate: monthRate }, days).per;
 }
 
-/** True when a vehicle gets a weekly price for this many days. */
-export function weeklyApplies(vehicle, days) {
-  return !!vehicle && perDay(vehicle.day_rate, days, vehicle.week_rate) < (Number(vehicle.day_rate) || 0);
+export function rentFor(dayRate, days, weekRate, monthRate) {
+  return priceFor({ day_rate: dayRate, week_rate: weekRate, month_rate: monthRate }, days).rent;
 }
 
 /**
  * @param {object} p
- * @param {Array<{vehicle:{id?:string, day_rate:number, week_rate?:number, deposit:number, name:string}, qty:number}>} [p.items]
+ * @param {Array<{vehicle:{id?:string, day_rate:number, week_rate?:number, month_rate?:number, deposit:number, name:string}, qty:number}>} [p.items]
  *        the vehicles in the booking (several of the same model = qty)
  * @param {{day_rate:number, deposit:number, name:string}} [p.vehicle]  single vehicle (older callers)
  * @param {string} p.start  "YYYY-MM-DDTHH:MM" (India time)
@@ -62,10 +72,10 @@ export function quote({ items, vehicle, start, end, delivery, collection, settin
     .map((i) => ({ vehicle: i.vehicle, qty: Math.max(0, Math.floor(Number(i.qty) || 0)) }))
     .filter((i) => i.vehicle && i.qty > 0)
     .map((i) => {
-      const per = perDay(i.vehicle.day_rate, days, i.vehicle.week_rate);
-      const each = per * days;
+      const p = priceFor(i.vehicle, days);
+      const each = p.rent;
       return {
-        vehicle_id: i.vehicle.id, name: i.vehicle.name, qty: i.qty, day_rate: per, weekly: per < (Number(i.vehicle.day_rate) || 0),
+        vehicle_id: i.vehicle.id, name: i.vehicle.name, qty: i.qty, day_rate: p.per, tier: p.tier, month_rate: Number(i.vehicle.month_rate) || 0,
         rent: each * i.qty, deposit: (Number(i.vehicle.deposit) || 0) * i.qty,
         full: (Number(i.vehicle.day_rate) || 0) * days * i.qty,
       };
@@ -91,7 +101,7 @@ export function quote({ items, vehicle, start, end, delivery, collection, settin
   const lines = [];
   if (days) {
     const d = `${days} day${days > 1 ? 's' : ''}`;
-    for (const i of list) lines.push({ label: `${i.qty > 1 ? i.qty + ' × ' : ''}${i.name} · ${d}${i.weekly ? ` · weekly price ${inr(i.day_rate)}/day` : ''}`, amount: i.rent });
+    for (const i of list) lines.push({ label: `${i.qty > 1 ? i.qty + ' × ' : ''}${i.name} · ${d}${i.tier === 'week' ? ` · weekly price ${inr(i.day_rate)}/day` : i.tier === 'month' ? ` · monthly price ${inr(i.month_rate)}/30 days` : ''}`, amount: i.rent });
     if (delivery_fee) lines.push({ label: 'Doorstep delivery', amount: delivery_fee });
     if (collection_fee) lines.push({ label: 'Doorstep collection at return', amount: collection_fee });
   }
