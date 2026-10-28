@@ -436,3 +436,76 @@ test('customer finds bookings by mobile number + date of birth; admin search mat
     assert.equal(list.total, 1, q);
   }
 });
+
+test('web push: payload encryption (RFC 8291) round-trips and VAPID header verifies', async () => {
+  const { encryptPayload, sendPush, notifyAdmins, newBookingMessage } = await import('../worker/push.js');
+  const { b64url, fromB64url } = await import('../worker/util.js');
+  const env = makeEnv();
+  // A "browser" subscription
+  const ua = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const uaPub = new Uint8Array(await crypto.subtle.exportKey('raw', ua.publicKey));
+  const authSecret = crypto.getRandomValues(new Uint8Array(16));
+  const sub = { id: 1, endpoint: 'https://web.push.apple.com/abc', p256dh: b64url(uaPub), auth: b64url(authSecret) };
+
+  const body = await encryptPayload(sub.p256dh, sub.auth, JSON.stringify({ title: 'Hi', body: 'There' }));
+  // Decrypt like a browser would
+  const salt = body.slice(0, 16), idlen = body[20], asPub = body.slice(21, 21 + idlen), cipher = body.slice(21 + idlen);
+  assert.equal(new DataView(body.buffer, body.byteOffset + 16, 4).getUint32(0), 4096);
+  const h = async (k, d) => new Uint8Array(await crypto.subtle.sign('HMAC', await crypto.subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']), d));
+  const cat = (...a) => { const o = new Uint8Array(a.reduce((n, x) => n + x.length, 0)); let i = 0; for (const x of a) { o.set(x, i); i += x.length; } return o; };
+  const te = new TextEncoder();
+  const asKey = await crypto.subtle.importKey('raw', asPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const secret = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: asKey }, ua.privateKey, 256));
+  const ikm = await h(await h(authSecret, secret), cat(te.encode('WebPush: info\0'), uaPub, asPub, new Uint8Array([1])));
+  const prk = await h(salt, ikm);
+  const cek = (await h(prk, cat(te.encode('Content-Encoding: aes128gcm\0'), new Uint8Array([1])))).slice(0, 16);
+  const nonce = (await h(prk, cat(te.encode('Content-Encoding: nonce\0'), new Uint8Array([1])))).slice(0, 12);
+  const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['decrypt']), cipher));
+  assert.equal(plain[plain.length - 1], 2);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(plain.slice(0, -1))), { title: 'Hi', body: 'There' });
+
+  // sendPush: check headers and the VAPID signature, using a fake push service
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => { calls.push({ url, init }); return new Response(null, { status: url.includes('gone') ? 410 : 201 }); };
+  try {
+    assert.equal(await sendPush(env, sub, { title: 'x' }), 201);
+    const hdr = calls[0].init.headers;
+    assert.equal(hdr['content-encoding'], 'aes128gcm');
+    const [, t, k] = /^vapid t=([^,]+), k=(.+)$/.exec(hdr.authorization);
+    const [hh, cc, ss] = t.split('.');
+    const claims = JSON.parse(new TextDecoder().decode(fromB64url(cc)));
+    assert.equal(claims.aud, 'https://web.push.apple.com');
+    const pub = await crypto.subtle.importKey('raw', fromB64url(k), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    assert.ok(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, fromB64url(ss), te.encode(hh + '.' + cc)));
+
+    // Admin API: subscribe, list, test, expired device is dropped
+    const cookie = await adminCookie(env);
+    let r = await admin(env, cookie, '/push');
+    let info = await r.json();
+    assert.equal(info.publicKey, k);           // same key the browser subscribes with
+    assert.equal(info.devices.length, 0);
+    r = await admin(env, cookie, '/push/subscribe', { subscription: { endpoint: 'https://evil.example.com/x', keys: { p256dh: sub.p256dh, auth: sub.auth } } });
+    assert.equal(r.status, 400);
+    await admin(env, cookie, '/push/subscribe', { subscription: { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, label: 'iPhone · home-screen app' });
+    await admin(env, cookie, '/push/subscribe', { subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/gone', keys: { p256dh: sub.p256dh, auth: sub.auth } }, label: 'Old phone' });
+    info = await (await admin(env, cookie, '/push')).json();
+    assert.equal(info.devices.length, 2);
+    calls.length = 0;
+    const res = await (await admin(env, cookie, '/push/test', {})).json();
+    assert.equal(res.sent, 1);
+    assert.equal(res.failed, 1);
+    info = await (await admin(env, cookie, '/push')).json();
+    assert.deepEqual(info.devices.map((d) => d.label), ['iPhone · home-screen app']);
+    // New-booking message
+    const msg = newBookingMessage({ id: 7, ref: 'CT-ABC123', name: 'Riya', vehicle_name: '2 × TVS NTORQ 125', start_at: '2026-11-01T10:00', end_at: '2026-11-08T10:00', total: 8400 });
+    assert.equal(msg.url, '/admin/#/booking/7');
+    assert.match(msg.body, /Riya · 2 × TVS NTORQ 125/);
+    assert.match(msg.body, /₹8,400/);
+    const n = await notifyAdmins(env, msg);
+    assert.equal(n.sent, 1);
+    // Remove the device
+    await admin(env, cookie, '/push/remove', { endpoint: sub.endpoint });
+    assert.equal((await (await admin(env, cookie, '/push')).json()).devices.length, 0);
+  } finally { globalThis.fetch = realFetch; }
+});
