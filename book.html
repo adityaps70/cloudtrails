@@ -17,7 +17,7 @@
     <a href="index.html#fleet">Fleet</a>
     <a href="index.html#pricing">Pricing</a>
     <a href="track.html">My booking</a>
-    <a class="bk-wa" id="top-wa" href="https://wa.me/918730883206" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+    <a class="bk-wa" id="top-call" href="tel:+918730883206">Call us</a>
   </nav>
 </header>
 
@@ -30,8 +30,8 @@
 
   <div id="offline" class="bk-notice" hidden>
     <h2 class="font-display">Online booking is unavailable right now</h2>
-    <p id="offline-msg">We couldn't reach our booking system. You can still book in a minute on WhatsApp.</p>
-    <a class="btn-sharp btn-sharp-solid" id="offline-wa" href="https://wa.me/918730883206" target="_blank" rel="noopener noreferrer">Book on WhatsApp</a>
+    <p id="offline-msg">We couldn't reach our booking system. Call us and we'll book you in a minute.</p>
+    <a class="btn-sharp btn-sharp-solid" href="tel:+918730883206">Call +91 87308 83206</a>
   </div>
 
   <div id="app" class="bk-grid" hidden>
@@ -142,7 +142,7 @@
           <div class="row2">
             <div class="fld"><label for="name">Full name</label><input class="field" id="name" autocomplete="name" placeholder="e.g. Riya Sharma"><p class="err" data-err="name"></p></div>
             <div class="fld"><label id="dob-label">Date of birth</label><div class="dpick" data-for="dob" data-range="dob" role="group" aria-labelledby="dob-label"></div><input type="hidden" id="dob"><p class="dp-note" id="dob-note"></p><p class="err" data-err="dob"></p></div>
-            <div class="fld"><label for="phone">Mobile (WhatsApp)</label><input class="field" id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="98765 43210"><p class="err" data-err="phone"></p></div>
+            <div class="fld"><label for="phone">Mobile number</label><input class="field" id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="98765 43210"><p class="err" data-err="phone"></p></div>
             <div class="fld"><label for="email">Email <i>(optional)</i></label><input class="field" id="email" type="email" autocomplete="email" placeholder="you@example.com"><p class="err" data-err="email"></p></div>
           </div>
           <div class="fld"><label for="address">Permanent address</label><textarea class="field" id="address" rows="2" autocomplete="street-address" placeholder="House, street, city, state, PIN"></textarea><p class="err" data-err="address"></p></div>
@@ -262,10 +262,9 @@
     <p class="eyebrow">Booking received</p>
     <h1 class="font-display">You're on the <span class="font-serif-accent accent">list</span>, <span id="done-name"></span></h1>
     <p class="ref">Booking reference <b id="done-ref"></b></p>
-    <p class="lede">We'll check your documents and payment and confirm on WhatsApp, usually within the hour (9 AM – 10 PM). Save your status link — you can see updates and upload anything we ask for there.</p>
+    <p class="lede">We'll check your documents and payment and confirm your booking, usually within the hour (9 AM – 10 PM). Save your status link — you can see updates and upload anything we ask for there.</p>
     <div class="done-actions">
       <a class="btn-sharp btn-sharp-solid" id="done-track" href="track.html">See booking status</a>
-      <a class="btn-sharp" id="done-wa" href="#" target="_blank" rel="noopener noreferrer">Send it to us on WhatsApp</a>
     </div>
     <p class="hint small">Status link: <a id="done-link" href="#"></a> <button type="button" class="link-btn" id="copy-link">Copy</button></p>
   </section>
