@@ -141,7 +141,7 @@
           <p class="hint">Use your name exactly as it appears on your driving licence.</p>
           <div class="row2">
             <div class="fld"><label for="name">Full name</label><input class="field" id="name" autocomplete="name" placeholder="e.g. Riya Sharma"><p class="err" data-err="name"></p></div>
-            <div class="fld"><label for="dob">Date of birth</label><input class="field" type="date" id="dob" autocomplete="bday"><p class="err" data-err="dob"></p></div>
+            <div class="fld"><label id="dob-label">Date of birth</label><div class="dpick" data-for="dob" data-range="dob" role="group" aria-labelledby="dob-label"></div><input type="hidden" id="dob"><p class="dp-note" id="dob-note"></p><p class="err" data-err="dob"></p></div>
             <div class="fld"><label for="phone">Mobile (WhatsApp)</label><input class="field" id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="98765 43210"><p class="err" data-err="phone"></p></div>
             <div class="fld"><label for="email">Email <i>(optional)</i></label><input class="field" id="email" type="email" autocomplete="email" placeholder="you@example.com"><p class="err" data-err="email"></p></div>
           </div>
@@ -163,7 +163,7 @@
           <h2 class="step-title font-display">Driving licence</h2>
           <div class="row2">
             <div class="fld"><label for="licence_no">Licence number</label><input class="field" id="licence_no" placeholder="e.g. ML05 20190012345" autocapitalize="characters"><p class="err" data-err="licence_no"></p></div>
-            <div class="fld"><label for="licence_expiry">Valid until</label><input class="field" type="date" id="licence_expiry"><p class="err" data-err="licence_expiry"></p></div>
+            <div class="fld"><label id="licence_expiry-label">Valid until</label><div class="dpick" data-for="licence_expiry" data-range="expiry" role="group" aria-labelledby="licence_expiry-label"></div><input type="hidden" id="licence_expiry"><p class="dp-note" id="licence_expiry-note"></p><p class="err" data-err="licence_expiry"></p></div>
           </div>
           <div class="uploads">
             <div class="up" data-kind="licence_front"></div>
@@ -274,6 +274,35 @@
 <div class="bk-bar" id="bar" hidden>
   <div><span class="bar-label">Total</span> <b id="bar-total">₹0</b> <span class="bar-days" id="bar-days"></span></div>
   <button type="button" class="btn-sharp btn-sharp-solid" id="bar-next">Continue</button>
+</div>
+
+<div class="cam" id="cam" hidden role="dialog" aria-modal="true" aria-labelledby="cam-title">
+  <div class="cam-box">
+    <div class="cam-top">
+      <p class="cam-title font-display" id="cam-title">Take a selfie</p>
+      <button type="button" class="cam-x" id="cam-close" aria-label="Close camera">&times;</button>
+    </div>
+    <div class="cam-view" id="cam-view">
+      <video id="cam-video" playsinline muted autoplay></video>
+      <img id="cam-still" alt="Your photo" hidden>
+      <div class="cam-guide" id="cam-guide" aria-hidden="true"></div>
+      <div class="cam-flash" id="cam-flash"></div>
+      <div class="cam-msg" id="cam-msg" hidden>
+        <p id="cam-msg-text"></p>
+        <button type="button" class="btn-sharp" id="cam-fallback">Upload a photo instead</button>
+      </div>
+    </div>
+    <p class="cam-tip" id="cam-tip">Fit your face in the oval · good light · no sunglasses or helmet</p>
+    <div class="cam-actions" id="cam-live">
+      <button type="button" class="cam-round" id="cam-flip" aria-label="Switch camera" hidden><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h3l2-2h6l2 2h3v12H4z"/><path d="M9.5 13a2.5 2.5 0 0 1 4.6-1.4M14.5 13a2.5 2.5 0 0 1-4.6 1.4"/><path d="M14 10.5h1.2V9.3M10 15.5H8.8v1.2"/></svg></button>
+      <button type="button" class="cam-shutter" id="cam-shoot" aria-label="Take photo" disabled><span></span></button>
+      <span class="cam-round ghost" aria-hidden="true"></span>
+    </div>
+    <div class="cam-actions review" id="cam-review" hidden>
+      <button type="button" class="btn-sharp" id="cam-retake">Retake</button>
+      <button type="button" class="btn-sharp btn-sharp-solid" id="cam-use">Use this photo</button>
+    </div>
+  </div>
 </div>
 
 <div class="overlay" id="overlay" hidden>
