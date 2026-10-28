@@ -42,25 +42,46 @@ export function discountLabel(days) {
   return '';
 }
 
+/** Effective price per day for a rental of `days` days (after the multi-day / weekly discount). */
+export function perDay(dayRate, days) {
+  return days > 0 ? Math.round(rentFor(dayRate, days) / days) : Number(dayRate) || 0;
+}
+
 /**
  * @param {object} p
- * @param {{day_rate:number, deposit:number, name:string}} p.vehicle
+ * @param {Array<{vehicle:{id?:string, day_rate:number, deposit:number, name:string}, qty:number}>} [p.items]
+ *        the vehicles in the booking (several of the same model = qty)
+ * @param {{day_rate:number, deposit:number, name:string}} [p.vehicle]  single vehicle (older callers)
  * @param {string} p.start  "YYYY-MM-DDTHH:MM" (India time)
  * @param {string} p.end
- * @param {boolean} p.guide
- * @param {boolean} p.delivery    vehicle delivered to the customer
- * @param {boolean} p.collection  vehicle collected from the customer at the end
+ * @param {boolean} p.guide       one local guide rides with the group
+ * @param {boolean} p.delivery    vehicles delivered to the customer (one flat fee per booking)
+ * @param {boolean} p.collection  vehicles collected from the customer at the end (one flat fee per booking)
  * @param {object} p.settings     { guide_rate, delivery_fee, collection_fee, pay_mode, advance_amount }
  */
-export function quote({ vehicle, start, end, guide, delivery, collection, settings }) {
+export function quote({ items, vehicle, start, end, guide, delivery, collection, settings }) {
   const s = settings || {};
   const days = rentalDays(start, end);
-  const rent = rentFor(vehicle?.day_rate, days);
+  if (!items) items = vehicle ? [{ vehicle, qty: 1 }] : [];
+  const list = items
+    .map((i) => ({ vehicle: i.vehicle, qty: Math.max(0, Math.floor(Number(i.qty) || 0)) }))
+    .filter((i) => i.vehicle && i.qty > 0)
+    .map((i) => {
+      const each = rentFor(i.vehicle.day_rate, days);
+      return {
+        vehicle_id: i.vehicle.id, name: i.vehicle.name, qty: i.qty, day_rate: Number(i.vehicle.day_rate) || 0,
+        rent: each * i.qty, deposit: (Number(i.vehicle.deposit) || 0) * i.qty,
+        full: (Number(i.vehicle.day_rate) || 0) * days * i.qty,
+      };
+    });
+  const qty = list.reduce((a, i) => a + i.qty, 0);
+  const rent = list.reduce((a, i) => a + i.rent, 0);
+  const deposit = list.reduce((a, i) => a + i.deposit, 0);
   const guide_fee = guide ? rentFor(Number(s.guide_rate ?? 1000), days) : 0;
   const delivery_fee = delivery ? Number(s.delivery_fee ?? 200) : 0;
   const collection_fee = collection ? Number(s.collection_fee ?? 200) : 0;
   const total = rent + guide_fee + delivery_fee + collection_fee;
-  const deposit = Number(vehicle?.deposit) || 0;
+  const savings = list.reduce((a, i) => a + i.full - i.rent, 0) + (guide ? Number(s.guide_rate ?? 1000) * days - guide_fee : 0);
 
   let pay_now;
   switch (s.pay_mode) {
@@ -74,12 +95,18 @@ export function quote({ vehicle, start, end, guide, delivery, collection, settin
   const lines = [];
   if (days) {
     const tag = discountLabel(days);
-    lines.push({ label: `${vehicle?.name || 'Vehicle'} × ${days} day${days > 1 ? 's' : ''}${tag ? ' · ' + tag : ''}`, amount: rent });
-    if (guide_fee) lines.push({ label: `Local guide × ${days} day${days > 1 ? 's' : ''}`, amount: guide_fee });
+    const d = `${days} day${days > 1 ? 's' : ''}`;
+    for (const i of list) lines.push({ label: `${i.qty > 1 ? i.qty + ' × ' : ''}${i.name} · ${d}${tag ? ' · ' + tag : ''}`, amount: i.rent });
+    if (guide_fee) lines.push({ label: `Local guide · ${d}`, amount: guide_fee });
     if (delivery_fee) lines.push({ label: 'Doorstep delivery', amount: delivery_fee });
     if (collection_fee) lines.push({ label: 'Doorstep collection at return', amount: collection_fee });
   }
-  return { days, rent, guide_fee, delivery_fee, collection_fee, total, deposit, pay_now, pay_later, lines };
+  return { days, qty, items: list, rent, guide_fee, delivery_fee, collection_fee, total, deposit, pay_now, pay_later, savings, lines };
+}
+
+/** "2 × TVS NTORQ 125 + Royal Enfield Hunter 350" */
+export function itemsSummary(items) {
+  return (items || []).filter((i) => i.qty > 0).map((i) => `${i.qty > 1 ? i.qty + ' × ' : ''}${i.name || i.vehicle_name || i.vehicle?.name}`).join(' + ');
 }
 
 export function inr(n) {

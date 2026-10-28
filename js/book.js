@@ -1,5 +1,5 @@
 // Cloud Trails — online booking flow (book.html).
-import { quote, inr, rentalDays, nowIST, parseLocal } from './pricing.js';
+import { quote, inr, rentalDays, nowIST, parseLocal, perDay, itemsSummary } from './pricing.js';
 
 const API = window.CT_API || '';
 const $ = (s, r = document) => r.querySelector(s);
@@ -15,6 +15,11 @@ const DOCS = {
   selfie: { label: 'Your selfie', required: true, camera: true },
   payment: { label: 'Payment screenshot', required: true },
 };
+function docInfo(kind) {
+  if (DOCS[kind]) return DOCS[kind];
+  const m = /^rider(\d+)_licence$/.exec(kind);
+  return { label: 'Driving licence — front', required: true, note: m ? `Rider ${Number(m[1]) + 1}` : '' };
+}
 const FIELD_STEP = {
   start: 0, end: 0, vehicle: 0,
   handover_address: 1, return_address: 1,
@@ -23,12 +28,20 @@ const FIELD_STEP = {
   consents: 4, consent_name: 4, signature: 4, terms: 4,
   payment: 5, upi_utr: 5,
 };
+const stepOf = (k) => (FIELD_STEP[k] != null ? FIELD_STEP[k] : /^rider\d+_/.test(k) ? 3 : null);
 const DRAFT_FIELDS = ['name', 'dob', 'phone', 'email', 'address', 'hometown', 'pillion_name', 'emergency_name', 'emergency_phone', 'notes',
   'licence_no', 'licence_expiry', 'id_type', 'handover_address', 'handover_landmark', 'return_address'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
 const S = {
-  cfg: null, vehicles: [], avail: {}, availOk: true, step: 0, maxStep: 0,
-  files: {}, sigDirty: false, vehicleId: '', submitting: false,
+  cfg: null, vehicles: [], avail: {}, step: 0, maxStep: 0,
+  files: {}, sigDirty: false, submitting: false,
+  cart: {},            // vehicle id → quantity
+  riders: [],          // [{name, phone, licence_no}] for vehicles 2..n
+  view: '',            // first month shown in the calendar, "YYYY-MM"
+  picking: 'start',    // which end of the range the next calendar tap sets
+  hover: '',
 };
 
 /* ---------------- storage helpers (never required) ---------------- */
@@ -51,18 +64,20 @@ async function boot() {
   }
   S.cfg = cfg;
   S.vehicles = cfg.vehicles;
+  S.max = cfg.max_vehicles || 10;
   const st = cfg.settings;
-  const wa = 'https://wa.me/' + st.whatsapp;
-  $('#top-wa').href = wa;
+  $('#top-wa').href = 'https://wa.me/' + st.whatsapp;
   if (st.booking_enabled !== '1') return offline('Online booking is paused right now. Message us on WhatsApp and we\'ll sort you out quickly.');
 
   $('#app').hidden = false;
   $('#bar').hidden = false;
   setupTimes();
   setupDates();
+  setupCalendar();
+  renderPresets();
   renderVehicles();
   setupHandover();
-  setupDocs();
+  $$('.up').forEach(initUpload);
   setupTerms();
   setupSignature();
   restoreDraft();
@@ -94,6 +109,11 @@ function offline(msg) {
 }
 
 /* ---------------- dates & times ---------------- */
+function today() { return (S.cfg?.now || nowIST()).slice(0, 10); }
+function addDays(date, n) { return new Date(Date.parse(date) + n * 86400000).toISOString().slice(0, 10); }
+function daysBetween(a, b) { return Math.round((Date.parse(b) - Date.parse(a)) / 86400000); }
+function maxDays() { return Number(S.cfg.settings.max_days) || 30; }
+
 function setupTimes() {
   const st = S.cfg.settings;
   const open = Number(st.open_hour), close = Number(st.close_hour);
@@ -110,31 +130,26 @@ function setupTimes() {
   $('#end-time').innerHTML = opts.join('');
 }
 
-function addDays(date, n) {
-  return new Date(Date.parse(date) + n * 86400000).toISOString().slice(0, 10);
-}
-
 function setupDates() {
-  const today = (S.cfg.now || nowIST()).slice(0, 10);
+  const t = today();
   const p = new URLSearchParams(location.search);
   const qs = p.get('start'), qe = p.get('end');
-  const okDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d >= today;
-  const sd = okDate(qs) ? qs : addDays(today, 1);
+  const okDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d >= t;
+  const sd = okDate(qs) ? qs : addDays(t, 1);
   const ed = okDate(qe) && qe > sd ? qe : addDays(sd, 1);
-  $('#start-date').min = today;
-  $('#end-date').min = today;
-  $('#start-date').value = sd;
-  $('#end-date').value = ed;
+  setRange(sd, ed, { silent: true });
   $('#start-time').value = '10:00';
   $('#end-time').value = '10:00';
-  $('#start-date').addEventListener('change', () => {
-    const s = $('#start-date').value;
-    if (s && $('#end-date').value <= s) $('#end-date').value = addDays(s, 1);
-    $('#end-date').min = s || today;
-  });
   const v = p.get('vehicle');
-  if (v && S.vehicles.some((x) => x.id === v)) S.vehicleId = v;
+  if (v && S.vehicles.some((x) => x.id === v)) S.cart[v] = 1;
   if (p.get('guide') === '1') $('#guide').checked = true;
+  S.view = sd.slice(0, 7);
+}
+
+function setRange(start, end, { silent } = {}) {
+  $('#start-date').value = start || '';
+  $('#end-date').value = end || '';
+  if (!silent) { renderCalendar(); renderPresets(); scheduleAvailability(); saveDraft(); update(); }
 }
 
 function startVal() { return $('#start-date').value && $('#start-time').value ? `${$('#start-date').value}T${$('#start-time').value}` : ''; }
@@ -148,11 +163,143 @@ function fmtWhen(s) {
   return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) + ', ' +
     d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
 }
+function fmtDay(d) {
+  if (!d) return '—';
+  return new Date(d + 'T00:00:00Z').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
 
+/* ---------------- calendar ---------------- */
+function monthsShown() { return $('.cal-card').getBoundingClientRect().width >= 620 ? 2 : 1; }
+function shiftMonth(ym, n) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+function setupCalendar() {
+  $('#cal-prev').addEventListener('click', () => { if (S.view > today().slice(0, 7)) { S.view = shiftMonth(S.view, -1); renderCalendar(); } });
+  $('#cal-next').addEventListener('click', () => { S.view = shiftMonth(S.view, 1); renderCalendar(); });
+  const box = $('#cal-months');
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-date]');
+    if (b && !b.disabled) pickDate(b.dataset.date);
+  });
+  box.addEventListener('mouseover', (e) => {
+    const b = e.target.closest('button[data-date]');
+    const d = b && !b.disabled ? b.dataset.date : '';
+    if (S.picking === 'end' && d !== S.hover) { S.hover = d; paintRange(); }
+  });
+  box.addEventListener('mouseleave', () => { if (S.hover) { S.hover = ''; paintRange(); } });
+  let lastShown = 0;
+  window.addEventListener('resize', () => { const n = monthsShown(); if (n !== lastShown) { lastShown = n; renderCalendar(); } });
+  lastShown = monthsShown();
+  renderCalendar();
+}
+
+function pickDate(d) {
+  const s = $('#start-date').value;
+  if (S.picking === 'start' || !s || d <= s) {
+    S.picking = 'end';
+    setRange(d, '');
+    $('#cal-hint').textContent = 'Now tap your return date';
+  } else {
+    S.picking = 'start';
+    S.hover = '';
+    setRange(s, d);
+    $('#cal-hint').textContent = 'Tap a new pick-up date to change';
+  }
+}
+
+function renderCalendar() {
+  const box = $('#cal-months');
+  const n = monthsShown();
+  const t = today();
+  const minView = t.slice(0, 7);
+  if (S.view < minView) S.view = minView;
+  const s = $('#start-date').value;
+  const limit = S.picking === 'end' && s ? addDays(s, maxDays()) : '';
+  let html = '';
+  for (let k = 0; k < n; k++) {
+    const ym = shiftMonth(S.view, k);
+    const [y, m] = ym.split('-').map(Number);
+    const first = new Date(Date.UTC(y, m - 1, 1));
+    const lead = (first.getUTCDay() + 6) % 7; // Monday first
+    const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    html += `<div class="cal-month"><p class="cal-title font-display">${MONTHS[m - 1]} <span>${y}</span></p>
+      <div class="cal-grid">${WEEKDAYS.map((w) => `<span class="cal-wd">${w}</span>`).join('')}`;
+    for (let i = 0; i < lead; i++) html += '<span class="cal-pad"></span>';
+    for (let d = 1; d <= daysIn; d++) {
+      const iso = `${ym}-${String(d).padStart(2, '0')}`;
+      const dis = iso < t || (limit && iso > limit);
+      const wk = ((lead + d - 1) % 7) >= 5;
+      html += `<button type="button" class="cal-day${iso === t ? ' is-today' : ''}${wk ? ' is-we' : ''}" data-date="${iso}" ${dis ? 'disabled' : ''} aria-label="${fmtDay(iso)}"><span>${d}</span></button>`;
+    }
+    html += '</div></div>';
+  }
+  box.innerHTML = html;
+  $('#cal-prev').disabled = S.view <= minView;
+  paintRange();
+}
+
+function paintRange() {
+  const s = $('#start-date').value;
+  const e = $('#end-date').value || (S.picking === 'end' && S.hover > s ? S.hover : '');
+  $$('#cal-months .cal-day').forEach((b) => {
+    const d = b.dataset.date;
+    b.classList.toggle('is-start', d === s);
+    b.classList.toggle('solo', d === s && !e);
+    b.classList.toggle('is-end', Boolean(e) && d === e);
+    b.classList.toggle('in-range', Boolean(s && e) && d > s && d < e);
+    b.classList.toggle('is-preview', !$('#end-date').value && Boolean(e) && d > s && d <= e);
+  });
+  $('#tf-start').textContent = fmtDay(s);
+  $('#tf-end').textContent = $('#end-date').value ? fmtDay($('#end-date').value) : (S.picking === 'end' ? 'Pick a date' : '—');
+  const days = rentalDays(startVal(), endVal());
+  $('#tf-days').textContent = days ? `${days} day${days > 1 ? 's' : ''}` : '';
+}
+
+/* ---------------- presets ---------------- */
+function renderPresets() {
+  const s = $('#start-date').value, e = $('#end-date').value;
+  const cur = s && e && $('#start-time').value === $('#end-time').value ? daysBetween(s, e) : 0;
+  const scooty = minRate();
+  const list = [
+    { days: 1, label: '1 day', sub: `from ${inr(scooty)}` },
+    { days: 2, label: '2 days', sub: `from ${inr(scooty * 2)}` },
+    { days: 3, label: '3 days', sub: '10% off', tag: true },
+    { days: 7, label: '1 week', sub: `${inr(perDay(scooty, 7))}/day`, tag: true, best: true },
+    { days: 14, label: '2 weeks', sub: `${inr(perDay(scooty, 14))}/day`, tag: true },
+  ].filter((p) => p.days <= maxDays());
+  $('#presets').innerHTML = list.map((p) =>
+    `<button type="button" class="preset${cur === p.days ? ' is-on' : ''}${p.best ? ' is-best' : ''}" data-days="${p.days}">
+      ${p.best ? '<i>Best value</i>' : ''}<b>${p.label}</b><small class="${p.tag ? 'save' : ''}">${p.sub}</small></button>`).join('') +
+    `<button type="button" class="preset${cur && !list.some((p) => p.days === cur) ? ' is-on' : ''}" data-days="custom"><b>Custom</b><small>Pick on calendar</small></button>`;
+  $$('#presets .preset').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.days === 'custom') {
+      S.picking = 'start';
+      $('#cal-hint').textContent = 'Tap your pick-up date';
+      $('.cal-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    const start = $('#start-date').value && $('#start-date').value >= today() ? $('#start-date').value : addDays(today(), 1);
+    $('#end-time').value = $('#start-time').value;
+    S.picking = 'start';
+    setRange(start, addDays(start, Number(b.dataset.days)));
+    $('#cal-hint').textContent = 'Tap a new pick-up date to change';
+    const end = $('#end-date').value;
+    if (end.slice(0, 7) > shiftMonth(S.view, monthsShown() - 1)) { S.view = start.slice(0, 7); renderCalendar(); }
+  }));
+}
+
+function minRate() { return Math.min(...S.vehicles.map((v) => v.day_rate)); }
+
+/* ---------------- availability ---------------- */
 let availTimer = 0, availSeq = 0;
+function scheduleAvailability() { clearTimeout(availTimer); availTimer = setTimeout(refreshAvailability, 200); }
+
 async function refreshAvailability() {
   const s = startVal(), e = endVal();
-  if (!s || !e || parseLocal(e) <= parseLocal(s)) { S.avail = {}; renderVehicles(); return; }
+  if (!s || !e || parseLocal(e) <= parseLocal(s)) { S.avail = {}; S.availErrors = null; renderVehicles(); update(); return; }
   const seq = ++availSeq;
   try {
     const r = await fetch(`${API}/api/availability?start=${encodeURIComponent(s)}&end=${encodeURIComponent(e)}`);
@@ -163,29 +310,73 @@ async function refreshAvailability() {
     setErr('start', j.ok ? '' : j.errors?.start || '');
     setErr('end', j.ok ? '' : j.errors?.end || '');
   } catch { S.avail = {}; }
+  // Trim the cart to what's free.
+  for (const [id, q] of Object.entries(S.cart)) if (S.avail[id] != null && q > S.avail[id]) S.cart[id] = S.avail[id];
   renderVehicles();
   update();
 }
 
 /* ---------------- vehicles ---------------- */
+function cartItems() {
+  return S.vehicles.filter((v) => (S.cart[v.id] || 0) > 0).map((v) => ({ vehicle: v, qty: S.cart[v.id] }));
+}
+function cartCount() { return Object.values(S.cart).reduce((a, b) => a + (b || 0), 0); }
+
 function renderVehicles() {
   const box = $('#vehicles');
   const known = Object.keys(S.avail).length > 0;
+  const days = rentalDays(startVal(), endVal());
+  const total = cartCount();
   box.innerHTML = S.vehicles.map((v) => {
-    const left = S.avail[v.id];
+    const left = known ? S.avail[v.id] : null;
+    const qty = S.cart[v.id] || 0;
     const out = known && left === 0;
-    const badge = !known ? '' : out ? '<span class="badge out">Booked out</span>' : left <= 2 ? `<span class="badge low">Only ${left} left</span>` : '<span class="badge ok">Available</span>';
-    return `<label class="veh${out ? ' is-out' : ''}${S.vehicleId === v.id ? ' is-on' : ''}">
-      <input type="radio" name="vehicle" value="${esc(v.id)}" ${S.vehicleId === v.id ? 'checked' : ''} ${out ? 'disabled' : ''}>
-      <span class="veh-img">${v.image ? `<img src="${esc(v.image)}" alt="" loading="lazy">` : ''}${badge}</span>
-      <span class="veh-body"><span class="veh-cat">${esc(v.category)}</span><span class="veh-name font-display">${esc(v.name)}</span>
-      <span class="veh-price"><b>${inr(v.day_rate)}</b> / day <i>· deposit ${inr(v.deposit)}</i></span></span>
-    </label>`;
+    const badge = !known ? '' : out ? '<span class="badge out">Booked out</span>' : left <= 2 ? `<span class="badge low">Only ${left} left</span>` : `<span class="badge ok">${left} available</span>`;
+    const eff = days ? perDay(v.day_rate, days) : v.day_rate;
+    const price = eff < v.day_rate
+      ? `<b>${inr(eff)}</b><span>/day</span> <s>${inr(v.day_rate)}</s> <em>${days >= 7 ? 'weekly rate' : '10% off'}</em>`
+      : `<b>${inr(v.day_rate)}</b><span>/day</span>`;
+    const canAdd = !out && (left == null || qty < left) && total < S.max;
+    return `<div class="veh${out ? ' is-out' : ''}${qty ? ' is-on' : ''}" data-id="${esc(v.id)}">
+      <button type="button" class="veh-pick" ${out ? 'disabled' : ''} aria-label="${qty ? 'Selected' : 'Add'}: ${esc(v.name)}">
+        <span class="veh-img">${v.image ? `<img src="${esc(v.image)}" alt="" loading="lazy">` : ''}${badge}${qty ? `<span class="veh-qty">${qty}</span>` : ''}</span>
+      </button>
+      <div class="veh-body">
+        <span class="veh-cat">${esc(v.category)}</span>
+        <span class="veh-name font-display">${esc(v.name)}</span>
+        <span class="veh-price">${price}</span>
+        <span class="veh-dep">Deposit ${inr(v.deposit)}${days ? ` · ${inr(eff * days)} for ${days} day${days > 1 ? 's' : ''}` : ''}</span>
+        <div class="veh-actions">
+          ${qty ? `<div class="stepper" role="group" aria-label="How many ${esc(v.name)}">
+              <button type="button" data-step="-1" aria-label="One less">−</button>
+              <output aria-live="polite">${qty}</output>
+              <button type="button" data-step="1" aria-label="One more" ${canAdd ? '' : 'disabled'}>+</button>
+            </div>`
+          : `<button type="button" class="veh-add" data-step="1" ${canAdd ? '' : 'disabled'}>${out ? 'Booked out' : 'Add'}</button>`}
+        </div>
+      </div>
+    </div>`;
   }).join('');
-  $$('input[name="vehicle"]', box).forEach((i) => i.addEventListener('change', () => { S.vehicleId = i.value; setErr('vehicle', ''); renderVehicles(); update(); }));
+  $$('.veh', box).forEach((card) => {
+    const id = card.dataset.id;
+    $$('[data-step]', card).forEach((b) => b.addEventListener('click', () => changeQty(id, Number(b.dataset.step))));
+    $('.veh-pick', card).addEventListener('click', () => { if (!S.cart[id]) changeQty(id, 1); });
+  });
 }
 
-function vehicle() { return S.vehicles.find((v) => v.id === S.vehicleId) || null; }
+function changeQty(id, delta) {
+  const left = S.avail[id];
+  let q = (S.cart[id] || 0) + delta;
+  if (delta > 0 && cartCount() >= S.max) return;
+  if (left != null) q = Math.min(q, left);
+  S.cart[id] = Math.max(0, q);
+  if (!S.cart[id]) delete S.cart[id];
+  setErr('vehicle', '');
+  renderVehicles();
+  renderRiders();
+  saveDraft();
+  update();
+}
 
 /* ---------------- handover ---------------- */
 function radio(name) { return ($(`input[name="${name}"]:checked`) || {}).value; }
@@ -208,36 +399,61 @@ function setupHandover() {
   S.syncHandover = sync;
 }
 
+/* ---------------- other riders ---------------- */
+function renderRiders() {
+  const need = Math.max(0, cartCount() - 1);
+  $('#riders-section').hidden = need === 0;
+  if (!need) return;
+  $('#riders-count').textContent = `${cartCount()} vehicles`;
+  while (S.riders.length < need) S.riders.push({ name: '', phone: '', licence_no: '' });
+  const box = $('#riders');
+  const have = $$('.rider', box).length;
+  if (have === need) return;
+  // Keep what's typed: rebuild from S.riders, keep uploads in S.files.
+  box.innerHTML = Array.from({ length: need }, (_, i) => {
+    const n = i + 1, r = S.riders[i];
+    return `<div class="rider" data-n="${n}">
+      <p class="rider-title font-display">Rider ${n + 1}</p>
+      <div class="row2">
+        <div class="fld"><label for="rider${n}_name">Full name</label><input class="field" id="rider${n}_name" data-rider="${i}" data-key="name" value="${esc(r.name)}" placeholder="As on their licence"><p class="err" data-err="rider${n}_name"></p></div>
+        <div class="fld"><label for="rider${n}_phone">Mobile <i>(optional)</i></label><input class="field" id="rider${n}_phone" type="tel" inputmode="tel" data-rider="${i}" data-key="phone" value="${esc(r.phone)}" placeholder="98765 43210"><p class="err" data-err="rider${n}_phone"></p></div>
+        <div class="fld"><label for="rider${n}_licence_no">Licence number</label><input class="field" id="rider${n}_licence_no" data-rider="${i}" data-key="licence_no" value="${esc(r.licence_no)}" autocapitalize="characters" placeholder="e.g. AS01 20200011111"><p class="err" data-err="rider${n}_licence_no"></p></div>
+        <div class="up" data-kind="rider${n}_licence"></div>
+      </div>
+    </div>`;
+  }).join('');
+  $$('.rider .up', box).forEach((el) => { initUpload(el); if (S.files[el.dataset.kind]) renderPreview(el, el.dataset.kind); });
+  $$('[data-rider]', box).forEach((inp) => inp.addEventListener('input', () => { S.riders[Number(inp.dataset.rider)][inp.dataset.key] = inp.value; }));
+}
+
 /* ---------------- documents ---------------- */
-function setupDocs() {
-  $$('.up').forEach((el) => {
-    const kind = el.dataset.kind;
-    const d = DOCS[kind];
-    el.innerHTML = `
-      <span class="up-label">${esc(d.label)}${d.required ? '' : ' <i>(optional)</i>'}</span>
-      <label class="up-zone" tabindex="0">
-        <input type="file" accept="${kind === 'selfie' ? 'image/*' : 'image/*,application/pdf'}" ${d.camera ? 'capture="user"' : ''} data-kind="${kind}">
-        <span class="up-empty"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0 4 4m-4-4L8 8"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-          <span>${d.camera ? 'Take or upload a photo' : 'Tap to upload'}</span>${d.note ? `<small>${esc(d.note)}</small>` : ''}</span>
-        <span class="up-preview" hidden></span>
-      </label>
-      <p class="err" data-err="${kind}"></p>`;
-    const input = $('input', el);
-    input.addEventListener('change', async () => {
-      const f = input.files && input.files[0];
-      if (!f) return;
-      if (f.size > 20 * 1024 * 1024) { setErr(kind, 'That file is over 20 MB — please choose a smaller photo.'); input.value = ''; return; }
-      setErr(kind, '');
-      el.classList.add('is-busy');
-      const blob = await compress(f);
-      el.classList.remove('is-busy');
-      if (blob.size > 10 * 1024 * 1024) { setErr(kind, 'That file is larger than 10 MB.'); input.value = ''; return; }
-      S.files[kind] = blob;
-      renderPreview(el, kind);
-      update();
-    });
-    $('.up-zone', el).addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+function initUpload(el) {
+  const kind = el.dataset.kind;
+  const d = docInfo(kind);
+  el.innerHTML = `
+    <span class="up-label">${esc(d.label)}${d.required ? '' : ' <i>(optional)</i>'}</span>
+    <label class="up-zone" tabindex="0">
+      <input type="file" accept="${kind === 'selfie' ? 'image/*' : 'image/*,application/pdf'}" ${d.camera ? 'capture="user"' : ''} data-kind="${kind}">
+      <span class="up-empty"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0 4 4m-4-4L8 8"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+        <span>${d.camera ? 'Take or upload a photo' : 'Tap to upload'}</span>${d.note && DOCS[kind] ? `<small>${esc(d.note)}</small>` : ''}</span>
+      <span class="up-preview" hidden></span>
+    </label>
+    <p class="err" data-err="${kind}"></p>`;
+  const input = $('input', el);
+  input.addEventListener('change', async () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    if (f.size > 20 * 1024 * 1024) { setErr(kind, 'That file is over 20 MB — please choose a smaller photo.'); input.value = ''; return; }
+    setErr(kind, '');
+    el.classList.add('is-busy');
+    const blob = await compress(f);
+    el.classList.remove('is-busy');
+    if (blob.size > 10 * 1024 * 1024) { setErr(kind, 'That file is larger than 10 MB.'); input.value = ''; return; }
+    S.files[kind] = blob;
+    renderPreview(el, kind);
+    update();
   });
+  $('.up-zone', el).addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
 }
 
 function renderPreview(el, kind) {
@@ -330,12 +546,18 @@ function signatureBlob() {
 /* ---------------- draft ---------------- */
 function restoreDraft() {
   const d = store.get('ct_draft');
-  if (!d) return;
+  if (!d) { renderRiders(); return; }
   for (const k of DRAFT_FIELDS) if (d[k] && $('#' + k) && k !== 'id_type') $('#' + k).value = d[k];
-  if (!S.vehicleId && d.vehicle_id && S.vehicles.some((v) => v.id === d.vehicle_id)) S.vehicleId = d.vehicle_id;
+  const urlVehicle = new URLSearchParams(location.search).get('vehicle');
+  if (!urlVehicle && d.cart && typeof d.cart === 'object') {
+    for (const [id, q] of Object.entries(d.cart)) if (S.vehicles.some((v) => v.id === id) && q > 0) S.cart[id] = Math.min(S.max, Math.floor(q));
+  }
+  if (Array.isArray(d.riders)) S.riders = d.riders.map((r) => ({ name: r.name || '', phone: r.phone || '', licence_no: r.licence_no || '' }));
   if (d.handover) { const r = $(`input[name="handover"][value="${d.handover}"]`); if (r) r.checked = true; }
   if (d.return_mode) { const r = $(`input[name="return_mode"][value="${d.return_mode}"]`); if (r) r.checked = true; }
   S.syncHandover();
+  renderVehicles();
+  renderRiders();
 }
 
 let draftTimer = 0;
@@ -344,7 +566,7 @@ function saveDraft() {
   draftTimer = setTimeout(() => {
     const d = {};
     for (const k of DRAFT_FIELDS) if ($('#' + k)) d[k] = $('#' + k).value;
-    d.vehicle_id = S.vehicleId; d.handover = radio('handover'); d.return_mode = radio('return_mode');
+    d.cart = S.cart; d.riders = S.riders; d.handover = radio('handover'); d.return_mode = radio('return_mode');
     store.set('ct_draft', d);
   }, 400);
 }
@@ -352,10 +574,7 @@ function saveDraft() {
 /* ---------------- state → UI ---------------- */
 function onAnyChange(e) {
   const id = e.target.id;
-  if (['start-date', 'start-time', 'end-date', 'end-time'].includes(id)) {
-    clearTimeout(availTimer);
-    availTimer = setTimeout(refreshAvailability, 250);
-  }
+  if (id === 'start-time' || id === 'end-time') { paintRange(); renderPresets(); scheduleAvailability(); }
   if (e.target.id && $(`[data-err="${e.target.id}"]`)) setErr(e.target.id, '');
   if (e.target.dataset.consent) setErr('consents', '');
   saveDraft();
@@ -363,34 +582,44 @@ function onAnyChange(e) {
 }
 
 function currentQuote() {
-  const v = vehicle();
   return quote({
-    vehicle: v || { day_rate: 0, deposit: 0, name: '' }, start: startVal(), end: endVal(), guide: $('#guide').checked,
+    items: cartItems(), start: startVal(), end: endVal(), guide: $('#guide').checked,
     delivery: radio('handover') === 'delivery', collection: radio('return_mode') === 'collection', settings: S.cfg.settings,
   });
 }
 
 function update() {
   if (!S.cfg) return;
-  const v = vehicle();
+  const items = cartItems();
   const q = currentQuote();
   const s = startVal(), e = endVal();
   const days = rentalDays(s, e);
-  $('#duration-hint').textContent = days ? `${days} day${days > 1 ? 's' : ''}${days >= 7 ? ' · weekly rate applies' : days >= 3 ? ' · 10% multi-day discount applies' : ''}` : '';
 
-  $('#sum-img').innerHTML = v?.image ? `<img src="${esc(v.image)}" alt="">` : '';
-  $('#sum-cat').textContent = v ? v.category : 'Your ride';
-  $('#sum-name').textContent = v ? v.name + ($('#guide').checked ? ' + guide' : '') : 'Choose a vehicle';
+  const banner = $('#duration-hint');
+  if (days >= 3) {
+    const save = items.length ? q.savings : 0;
+    banner.hidden = false;
+    banner.innerHTML = days >= 7
+      ? `<b>${days} days · weekly rate.</b> Scooties work out to ${inr(perDay(minRate(), days))} a day instead of ${inr(minRate())}${save ? ` — you save <em>${inr(save)}</em>` : ''}.`
+      : `<b>${days} days · 10% off every day.</b>${save ? ` You save <em>${inr(save)}</em>.` : ''} Make it a week for the weekly rate.`;
+  } else banner.hidden = true;
+
+  const one = items[0]?.vehicle;
+  $('#sum-img').innerHTML = items.length === 1 ? `<img src="${esc(one.image)}" alt="">`
+    : items.length > 1 ? `<div class="sum-stack">${items.slice(0, 3).map((i) => `<img src="${esc(i.vehicle.image)}" alt="">`).join('')}</div>` : '';
+  const count = cartCount();
+  $('#sum-cat').textContent = count > 1 ? `${count} vehicles` : one ? one.category : 'Your ride';
+  $('#sum-name').textContent = items.length ? itemsSummary(q.items) + ($('#guide').checked ? ' + guide' : '') : 'Choose your ride';
   $('#sum-dates').innerHTML = s && e ? `${esc(fmtWhen(s))} <span>→</span> ${esc(fmtWhen(e))}` : '';
   const hand = radio('handover') === 'delivery' ? 'Delivered to you' : 'Pick up at Nongrim Hills';
   const ret = radio('return_mode') === 'collection' ? 'collected from you' : 'return to counter';
   $('#sum-hand').textContent = `${hand} · ${ret}`;
-  $('#sum-lines').innerHTML = v ? q.lines.map((l) => `<li><span>${esc(l.label)}</span><b>${inr(l.amount)}</b></li>`).join('') : '';
-  $('#sum-total').textContent = inr(v ? q.total : 0);
-  $('#sum-dep').textContent = v ? `+ ${inr(q.deposit)} refundable deposit, paid at handover` : '';
-  if (v && S.cfg.settings.pay_mode === 'rent_deposit') $('#sum-dep').textContent = `+ ${inr(q.deposit)} refundable deposit, paid now`;
-  $('#bar-total').textContent = inr(v ? q.total : 0);
-  $('#bar-days').textContent = v && days ? `· ${days} day${days > 1 ? 's' : ''}` : '';
+  $('#sum-lines').innerHTML = items.length ? q.lines.map((l) => `<li><span>${esc(l.label)}</span><b>${inr(l.amount)}</b></li>`).join('')
+    + (q.savings > 0 ? `<li class="save"><span>You save</span><b>${inr(q.savings)}</b></li>` : '') : '';
+  $('#sum-total').textContent = inr(items.length ? q.total : 0);
+  $('#sum-dep').textContent = items.length ? `+ ${inr(q.deposit)} refundable deposit, ${S.cfg.settings.pay_mode === 'rent_deposit' ? 'paid now' : 'paid at handover'}` : '';
+  $('#bar-total').textContent = inr(items.length ? q.total : 0);
+  $('#bar-days').textContent = items.length && days ? `· ${count > 1 ? count + ' vehicles · ' : ''}${days} day${days > 1 ? 's' : ''}` : '';
   if (S.step === 5) renderPay();
 }
 
@@ -407,6 +636,8 @@ function show(n) {
   $('#back').style.visibility = n === 0 ? 'hidden' : 'visible';
   const label = n === STEPS - 1 ? 'Confirm booking' : 'Continue';
   $('#next').textContent = label; $('#bar-next').textContent = label;
+  if (n === 0) requestAnimationFrame(renderCalendar);
+  if (n === 3) renderRiders();
   if (n === 4) requestAnimationFrame(() => S.sizeSig());
   if (n === 5) { renderReview(); renderPay(); }
   update();
@@ -455,35 +686,38 @@ function phoneOk(v) {
   const d = v.replace(/\D/g, '');
   return (d.length === 10 && /^[6-9]/.test(d)) || (d.length === 12 && d.startsWith('91')) || (v.trim().startsWith('+') && d.length >= 8 && d.length <= 15);
 }
+const LICENCE = /^[A-Z0-9][A-Z0-9 \-\/]{6,22}$/;
 
 function paymentRequired() {
-  const st = S.cfg.settings;
-  return st.upi_ready && currentQuote().pay_now > 0;
+  return S.cfg.settings.upi_ready && currentQuote().pay_now > 0;
 }
 
 function validate(step) {
   const errs = {};
-  const st = S.cfg.settings;
+  let keys = [];
   if (step === 0) {
+    keys = ['start', 'end', 'vehicle'];
     const s = startVal(), e = endVal();
-    if (!s) errs.start = 'Pick a start date and time.';
-    if (!e) errs.end = 'Pick a return date and time.';
-    if (s && e && parseLocal(e) <= parseLocal(s)) errs.end = 'Return must be after the start.';
+    if (!s) errs.start = 'Pick your pick-up date on the calendar.';
+    if (!$('#end-date').value) errs.end = 'Pick your return date on the calendar.';
+    else if (s && e && parseLocal(e) <= parseLocal(s)) errs.end = 'Return must be after the pick-up.';
     if (S.availErrors) Object.assign(errs, S.availErrors);
-    if (!S.vehicleId) errs.vehicle = 'Choose a vehicle.';
-    else if (S.avail[S.vehicleId] === 0) errs.vehicle = 'That vehicle is booked out for these dates — pick another.';
+    if (!cartCount()) errs.vehicle = 'Add at least one vehicle.';
+    else for (const { vehicle: v, qty } of cartItems()) if (S.avail[v.id] != null && qty > S.avail[v.id]) errs.vehicle = `Only ${S.avail[v.id]} ${v.name} free for these dates.`;
   }
   if (step === 1) {
+    keys = ['handover_address', 'return_address'];
     if (radio('handover') === 'delivery' && val('handover_address').length < 8) errs.handover_address = 'Enter the delivery address in Shillong.';
     const same = radio('handover') === 'delivery' && $('#same-address').checked;
-    if (radio('return_mode') === 'collection' && !same && val('return_address').length < 8) errs.return_address = 'Enter where we should collect the vehicle.';
+    if (radio('return_mode') === 'collection' && !same && val('return_address').length < 8) errs.return_address = 'Enter where we should collect the vehicles.';
   }
   if (step === 2) {
+    keys = ['name', 'dob', 'phone', 'email', 'address', 'emergency_name', 'emergency_phone'];
     if (val('name').length < 3) errs.name = 'Enter your full name as on your licence.';
     const dob = val('dob');
     if (!dob) errs.dob = 'Enter your date of birth.';
     else {
-      const t = (S.cfg.now || nowIST()).slice(0, 10);
+      const t = today();
       const age = Number(t.slice(0, 4)) - Number(dob.slice(0, 4)) - (t.slice(5) < dob.slice(5) ? 1 : 0);
       if (age < 18) errs.dob = 'Riders must be 18 or older.';
       else if (age > 100) errs.dob = 'Check your date of birth.';
@@ -496,14 +730,29 @@ function validate(step) {
     else if (val('emergency_phone').replace(/\D/g, '').slice(-10) === val('phone').replace(/\D/g, '').slice(-10)) errs.emergency_phone = 'Use someone other than yourself.';
   }
   if (step === 3) {
-    if (!/^[A-Z0-9][A-Z0-9 \-\/]{6,22}$/.test(val('licence_no').toUpperCase())) errs.licence_no = 'Enter your driving licence number.';
+    keys = ['licence_no', 'licence_expiry', 'id_type', 'licence_front', 'licence_back', 'id_front', 'selfie'];
+    if (!LICENCE.test(val('licence_no').toUpperCase())) errs.licence_no = 'Enter your driving licence number.';
     const exp = val('licence_expiry');
     if (!exp) errs.licence_expiry = 'Enter the licence validity date.';
     else if (exp < endVal().slice(0, 10)) errs.licence_expiry = 'Your licence must be valid for the whole rental.';
     if (!val('id_type')) errs.id_type = 'Choose the ID you are uploading.';
     for (const k of ['licence_front', 'licence_back', 'id_front', 'selfie']) if (!S.files[k]) errs[k] = k === 'selfie' ? 'Add a photo of yourself.' : `Upload the ${DOCS[k].label.toLowerCase().replace(' — ', ' ')}.`;
+    const need = Math.max(0, cartCount() - 1);
+    const seen = new Set([val('licence_no').toUpperCase().replace(/\s+/g, ' ')]);
+    for (let n = 1; n <= need; n++) {
+      const r = S.riders[n - 1] || {};
+      keys.push(`rider${n}_name`, `rider${n}_phone`, `rider${n}_licence_no`, `rider${n}_licence`);
+      if ((r.name || '').trim().length < 3) errs[`rider${n}_name`] = 'Enter this rider\'s full name.';
+      if ((r.phone || '').trim() && !phoneOk(r.phone)) errs[`rider${n}_phone`] = 'Enter a valid mobile number.';
+      const lic = (r.licence_no || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      if (!LICENCE.test(lic)) errs[`rider${n}_licence_no`] = 'Enter this rider\'s licence number.';
+      else if (seen.has(lic)) errs[`rider${n}_licence_no`] = 'Each vehicle needs a different licensed rider.';
+      seen.add(lic);
+      if (!S.files[`rider${n}_licence`]) errs[`rider${n}_licence`] = 'Upload a photo of this rider\'s licence.';
+    }
   }
   if (step === 4) {
+    keys = ['consents', 'consent_name', 'signature'];
     if ($$('[data-consent]').some((c) => !c.checked)) errs.consents = 'Please tick every box to agree.';
     const norm = (x) => x.toLowerCase().replace(/\s+/g, ' ').trim();
     if (!val('consent_name')) errs.consent_name = 'Type your full name to sign.';
@@ -511,32 +760,34 @@ function validate(step) {
     if (!S.sigDirty) errs.signature = 'Please sign in the box.';
   }
   if (step === 5) {
+    keys = ['payment', 'upi_utr'];
     if (paymentRequired() && !S.files.payment) errs.payment = 'Upload the screenshot of your UPI payment.';
     const utr = val('upi_utr').replace(/\s+/g, '');
     if (utr && !/^[A-Za-z0-9]{6,40}$/.test(utr)) errs.upi_utr = 'The UPI reference is usually a 12-digit number.';
   }
-  const keys = { 0: ['start', 'end', 'vehicle'], 1: ['handover_address', 'return_address'], 2: ['name', 'dob', 'phone', 'email', 'address', 'emergency_name', 'emergency_phone'],
-    3: ['licence_no', 'licence_expiry', 'id_type', 'licence_front', 'licence_back', 'id_front', 'selfie'], 4: ['consents', 'consent_name', 'signature'], 5: ['payment', 'upi_utr'] }[step];
   for (const k of keys) setErr(k, errs[k] || '');
+  for (const k of Object.keys(errs)) if (!keys.includes(k)) setErr(k, errs[k]);
   return Object.keys(errs).length === 0;
 }
 
 /* ---------------- review & pay ---------------- */
 function renderReview() {
-  const v = vehicle();
   const q = currentQuote();
   const del = radio('handover') === 'delivery';
   const col = radio('return_mode') === 'collection';
   const same = del && $('#same-address').checked;
+  const need = Math.max(0, cartCount() - 1);
   const row = (k, v2, step) => `<div class="rv-row"><span>${k}</span><b>${v2}</b>${step != null ? `<button type="button" class="link-btn" data-goto="${step}">Edit</button>` : ''}</div>`;
   $('#review').innerHTML =
-    row('Ride', esc(v.name) + ($('#guide').checked ? ' + local guide' : ''), 0) +
+    row(cartCount() > 1 ? 'Rides' : 'Ride', esc(itemsSummary(q.items)) + ($('#guide').checked ? ' + local guide' : ''), 0) +
     row('Dates', `${esc(fmtWhen(startVal()))} → ${esc(fmtWhen(endVal()))} · ${q.days} day${q.days > 1 ? 's' : ''}`, 0) +
     row('Handover', del ? 'Delivered to ' + esc(val('handover_address')) : 'Pick up at our Nongrim Hills counter', 1) +
     row('Return', col ? 'Collected from ' + esc(same ? val('handover_address') : val('return_address')) : 'Return to the counter', 1) +
-    row('Rider', `${esc(val('name'))} · ${esc(val('phone'))}`, 2) +
-    row('Documents', `Licence ${esc(val('licence_no').toUpperCase())} · ${esc(val('id_type'))} · selfie`, 3) +
+    row(need ? 'Lead rider' : 'Rider', `${esc(val('name'))} · ${esc(val('phone'))}`, 2) +
+    (need ? row('Other riders', S.riders.slice(0, need).map((r) => esc(r.name)).join(', '), 3) : '') +
+    row('Documents', `Licence ${esc(val('licence_no').toUpperCase())} · ${esc(val('id_type'))} · selfie${need ? ` · ${need} more licence${need > 1 ? 's' : ''}` : ''}`, 3) +
     `<ul class="rv-lines">${q.lines.map((l) => `<li><span>${esc(l.label)}</span><b>${inr(l.amount)}</b></li>`).join('')}
+      ${q.savings > 0 ? `<li class="save"><span>You save</span><b>${inr(q.savings)}</b></li>` : ''}
       <li class="tot"><span>Rental total</span><b>${inr(q.total)}</b></li>
       <li><span>Refundable deposit${S.cfg.settings.pay_mode === 'rent_deposit' ? '' : ' (at handover)'}</span><b>${inr(q.deposit)}</b></li></ul>`;
   $$('[data-goto]', $('#review')).forEach((b) => b.addEventListener('click', () => { show(Number(b.dataset.goto)); scrollToFlow(); }));
@@ -559,7 +810,7 @@ function renderPay() {
   $('#pay-explain').textContent = {
     rent: `This covers your rental. The ${inr(q.deposit)} refundable deposit is paid at handover.`,
     rent_deposit: `This covers your rental and the ${inr(q.deposit)} refundable deposit.`,
-    advance: `Advance to hold your ride. The remaining ${inr(q.pay_later)} (including the ${inr(q.deposit)} refundable deposit) is paid at handover.`,
+    advance: `Advance to hold your booking. The remaining ${inr(q.pay_later)} (including the ${inr(q.deposit)} refundable deposit) is paid at handover.`,
   }[st.pay_mode] || '';
   $('#upi-id-row').hidden = !st.upi_id;
   $('#upi-id').textContent = st.upi_id;
@@ -617,8 +868,11 @@ async function submit() {
   const del = radio('handover') === 'delivery';
   const same = del && $('#same-address').checked;
   const consents = Object.fromEntries($$('[data-consent]').map((c) => [c.dataset.consent, c.checked]));
+  const need = Math.max(0, cartCount() - 1);
   const data = {
-    vehicle_id: S.vehicleId, start: startVal(), end: endVal(), guide: $('#guide').checked,
+    items: cartItems().map((i) => ({ vehicle_id: i.vehicle.id, qty: i.qty })),
+    riders: S.riders.slice(0, need),
+    start: startVal(), end: endVal(), guide: $('#guide').checked,
     handover: radio('handover'), handover_address: val('handover_address'), handover_landmark: val('handover_landmark'),
     return_mode: radio('return_mode'), return_address: same ? val('handover_address') : val('return_address'),
     name: val('name'), phone: val('phone'), email: val('email'), dob: val('dob'), address: val('address'), hometown: val('hometown'),
@@ -630,6 +884,8 @@ async function submit() {
   fd.set('data', JSON.stringify(data));
   for (const [k, b] of Object.entries(S.files)) {
     if (k === 'payment' && $('#pay-upi').hidden) continue;
+    const m = /^rider(\d+)_licence$/.exec(k);
+    if (m && Number(m[1]) > need) continue;
     fd.set(k, b, b.name || k);
   }
   fd.set('signature', await signatureBlob(), 'signature.png');
@@ -648,12 +904,12 @@ async function submit() {
 
   if (res.status === 201 && res.body.ref) return done(res.body);
   const errs = res.body.errors || {};
-  for (const [k, m] of Object.entries(errs)) setErr(k, m);
-  const steps = Object.keys(errs).map((k) => FIELD_STEP[k]).filter((x) => x != null);
+  const steps = Object.keys(errs).map(stepOf).filter((x) => x != null);
   if (steps.length) {
     const s = Math.min(...steps);
-    if (s !== S.step) { show(s); for (const [k, m] of Object.entries(errs)) setErr(k, m); scrollToFlow(); }
+    if (s !== S.step) { show(s); scrollToFlow(); }
   }
+  for (const [k, m] of Object.entries(errs)) setErr(k, m);
   $('#submit-error').textContent = res.body.error || 'Something went wrong. Please try again.';
   if (res.status === 409) refreshAvailability();
 }
@@ -672,8 +928,9 @@ function send(fd, onProgress) {
 
 function done(r) {
   const link = new URL(`track.html?ref=${encodeURIComponent(r.ref)}&t=${encodeURIComponent(r.token)}`, location.href).href;
+  const summary = itemsSummary(currentQuote().items);
   const list = store.get('ct_bookings') || [];
-  list.unshift({ ref: r.ref, token: r.token, vehicle: vehicle()?.name, start: startVal(), at: Date.now() });
+  list.unshift({ ref: r.ref, token: r.token, vehicle: summary, start: startVal(), at: Date.now() });
   store.set('ct_bookings', list.slice(0, 10));
   store.del('ct_draft');
   $('#app').hidden = true; $('#bar').hidden = true; $('.bk-intro').hidden = true;
@@ -682,7 +939,7 @@ function done(r) {
   $('#done-ref').textContent = r.ref;
   $('#done-track').href = link;
   $('#done-link').href = link; $('#done-link').textContent = link;
-  const msg = `Hi Cloud Trails! I just booked online.\nRef: ${r.ref}\n${vehicle()?.name}, ${fmtWhen(startVal())} → ${fmtWhen(endVal())}\nName: ${val('name')}`;
+  const msg = `Hi Cloud Trails! I just booked online.\nRef: ${r.ref}\n${summary}, ${fmtWhen(startVal())} → ${fmtWhen(endVal())}\nName: ${val('name')}`;
   $('#done-wa').href = `https://wa.me/${S.cfg.settings.whatsapp}?text=${encodeURIComponent(msg)}`;
   $('#copy-link').addEventListener('click', () => copy(link, $('#copy-link')));
   window.scrollTo({ top: 0, behavior: 'smooth' });
