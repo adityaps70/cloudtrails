@@ -27,7 +27,7 @@ function withCors(response, origin) {
 function errorResponse(e) {
   if (e instanceof HttpError) return json({ ok: false, error: e.message, ...(e.extra || {}) }, e.status);
   console.error(e && e.stack || e);
-  return json({ ok: false, error: 'Something went wrong on our side. Please try again, or message us on WhatsApp.' }, 500);
+  return json({ ok: false, error: 'Something went wrong on our side. Please try again, or call us on +91 87308 83206.' }, 500);
 }
 
 const ADMIN_HEADERS = {

@@ -173,11 +173,11 @@ async function readUpload(file, kind) {
 export async function createBooking(request, env, ctx) {
   const ip = clientIp(request);
   const settings = await getSettings(env);
-  if (settings.booking_enabled !== '1') throw new HttpError(503, 'Online booking is paused right now. Please message us on WhatsApp.');
+  if (settings.booking_enabled !== '1') throw new HttpError(503, 'Online booking is paused right now. Please call us on +91 87308 83206.');
 
   const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings WHERE created_ip = ? AND created_at > ?")
     .bind(ip, new Date(Date.now() - 3600 * 1000).toISOString()).first();
-  if ((recent?.n || 0) >= 6) throw new HttpError(429, 'Too many bookings from this connection. Please message us on WhatsApp.');
+  if ((recent?.n || 0) >= 6) throw new HttpError(429, 'Too many bookings from this connection. Please call us on +91 87308 83206.');
 
   let form;
   try { form = await request.formData(); } catch { throw bad('Could not read the form. Please try again.'); }
