@@ -254,3 +254,72 @@ test('built-in QR image is served when set', async () => {
   assert.equal(cfg.settings.has_qr, true);
   assert.equal(cfg.settings.upi_ready, true);
 });
+
+test('group booking: several vehicles, extra riders, quantity-aware availability', async () => {
+  const env = makeEnv();
+  const cookie = await adminCookie(env);
+  await admin(env, cookie, '/vehicles', { id: 'tvs-ntorq-125', name: 'TVS NTORQ 125', category: 'Scooty · Sporty', day_rate: 700, deposit: 2000, units: 3, sort: 4 });
+  const riders = [{ name: 'Kabir Sharma', phone: '9876511111', licence_no: 'AS01 20200011111' }, { name: 'Meera Das', licence_no: 'ML05 20210022222' }];
+  const data = bookingData({ items: [{ vehicle_id: 'tvs-ntorq-125', qty: 2 }, { vehicle_id: 'royal-enfield-hunter-350', qty: 1 }], vehicle_id: undefined, riders });
+
+  // A missing rider licence photo is caught
+  let r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(data, { rider1_licence: JPG }) });
+  let j = await r.json();
+  assert.equal(r.status, 422);
+  assert.ok(j.errors.rider2_licence);
+  assert.equal(j.errors.rider1_licence, undefined);
+
+  // Duplicate licence numbers are refused
+  r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm({ ...data, riders: [riders[0], { ...riders[1], licence_no: riders[0].licence_no }] }, { rider1_licence: JPG, rider2_licence: JPG }) });
+  assert.ok((await r.json()).errors.rider2_licence_no);
+
+  r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(data, { rider1_licence: JPG, rider2_licence: JPG }) });
+  j = await r.json();
+  assert.equal(r.status, 201, JSON.stringify(j));
+  assert.equal(j.total, 2 * 1890 + 4050 + 200);
+  assert.equal(j.deposit, 2 * 2000 + 5000);
+
+  // Only 1 NTORQ left for overlapping dates
+  let av = await (await call(env, `/api/availability?start=${data.start}&end=${data.end}`)).json();
+  assert.equal(av.vehicles.find((v) => v.id === 'tvs-ntorq-125').available, 1);
+  r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(bookingData({ items: [{ vehicle_id: 'tvs-ntorq-125', qty: 2 }], riders: [riders[0]] }), { rider1_licence: JPG }) });
+  assert.equal(r.status, 409);
+
+  // Admin sees items and riders; rescheduling keeps every vehicle
+  const list = await (await admin(env, cookie, '/bookings')).json();
+  assert.equal(list.bookings[0].vehicle_name, '2 × TVS NTORQ 125 + Royal Enfield Hunter 350');
+  const id = list.bookings[0].id;
+  let det = await (await admin(env, cookie, `/bookings/${id}`)).json();
+  assert.equal(det.items.length, 2);
+  assert.equal(det.riders.length, 2);
+  assert.equal(det.doc_labels.rider2_licence, 'Rider 3 — driving licence');
+  r = await admin(env, cookie, `/bookings/${id}/action`, { action: 'reschedule', start: day(1) + 'T10:00', end: day(8) + 'T10:00' });
+  det = await r.json();
+  assert.equal(r.status, 200, JSON.stringify(det));
+  assert.equal(det.booking.total, 2 * 3850 + 8250 + 200); // weekly rate
+  assert.deepEqual(det.items.map((i) => i.qty), [2, 1]);
+
+  // Rider licence can be requested again and re-uploaded by the customer
+  await admin(env, cookie, `/bookings/${id}/action`, { action: 'request_reupload', kinds: ['rider1_licence'] });
+  const st = await (await call(env, `/api/bookings/${j.ref}?t=${j.token}`)).json();
+  assert.deepEqual(st.reupload_kinds, ['rider1_licence']);
+  assert.equal(st.items.length, 2);
+  const fd = new FormData();
+  fd.set('rider1_licence', new Blob([JPG]), 'x.jpg');
+  r = await call(env, `/api/bookings/${j.ref}/files?t=${j.token}`, { method: 'POST', body: fd });
+  assert.equal(r.status, 200);
+
+  // Calendar counts quantities
+  const cal = await (await admin(env, cookie, '/calendar?from=' + day(1))).json();
+  assert.equal(cal.rows.find((x) => x.id === 'tvs-ntorq-125').cells[0], 2);
+  assert.equal(cal.rows.find((x) => x.id === 'tvs-ntorq-125').bookings[0].qty, 2);
+});
+
+test('weekly pricing for a group', () => {
+  const s = { delivery_fee: 200 };
+  const q = quote({ items: [{ vehicle: { id: 'a', name: 'A', day_rate: 700, deposit: 2000 }, qty: 3 }], start: '2026-11-01T10:00', end: '2026-11-08T10:00', settings: s });
+  assert.equal(q.days, 7);
+  assert.equal(q.rent, 3 * 3850);
+  assert.equal(q.savings, 3 * (4900 - 3850));
+  assert.equal(q.qty, 3);
+});

@@ -38,13 +38,27 @@ await page.waitForSelector('#vehicles .veh');
 await page.waitForTimeout(400);
 await shot(page, '01-ride');
 
-// Step 1 → choose 3 days
-const sd = await page.inputValue('#start-date');
-const end = new Date(Date.parse(sd) + 3 * 86400000).toISOString().slice(0, 10);
-await page.fill('#end-date', end);
-await page.dispatchEvent('#end-date', 'change');
+// Step 1 → "1 week" preset, then 2 NTORQs + 1 Hunter, with a guide
+await page.click('#presets .preset[data-days="7"]');
 await page.waitForTimeout(500);
+await shot(page, '01b-week');
+await page.click('.veh[data-id="tvs-ntorq-125"] [data-step="1"]');
+await page.click('.veh[data-id="royal-enfield-hunter-350"] .veh-add');
+await page.waitForTimeout(300);
+const qty = await page.$$eval('.veh .stepper output', (o) => o.map((x) => x.textContent).join(','));
+if (qty !== '2,1') errors.push('expected quantities 2,1, got ' + qty);
 await page.check('#guide');
+await shot(page, '01c-group');
+// Calendar: tap a custom range (start → end) and back to a week
+await page.click('#cal-next');
+const days = await page.$$eval('#cal-months .cal-day:not([disabled])', (b) => b.map((x) => x.dataset.date));
+await page.click(`#cal-months .cal-day[data-date="${days[3]}"]`);
+await page.click(`#cal-months .cal-day[data-date="${days[6]}"]`);
+const picked = [await page.inputValue('#start-date'), await page.inputValue('#end-date')];
+if (picked[0] !== days[3] || picked[1] !== days[6]) errors.push('calendar range pick failed: ' + picked);
+await page.click('#presets .preset[data-days="7"]');
+await page.waitForTimeout(400);
+const sd = await page.inputValue('#start-date');
 await page.click('#bar-next');
 
 // Step 2 → delivery + collection
@@ -78,6 +92,14 @@ await page.setInputFiles('.up[data-kind="licence_back"] input', SMALL);
 await page.setInputFiles('.up[data-kind="id_front"] input', SMALL);
 await page.setInputFiles('.up[data-kind="selfie"] input', SMALL);
 await page.waitForFunction(() => document.querySelectorAll('.up.has-file').length >= 4, null, { timeout: 15000 });
+// Two other riders (3 vehicles)
+await page.fill('#rider1_name', 'Kabir Sharma');
+await page.fill('#rider1_licence_no', 'AS01 20200011111');
+await page.setInputFiles('.up[data-kind="rider1_licence"] input', SMALL);
+await page.fill('#rider2_name', 'Meera Das');
+await page.fill('#rider2_licence_no', 'ML05 20210022222');
+await page.setInputFiles('.up[data-kind="rider2_licence"] input', SMALL);
+await page.waitForFunction(() => document.querySelectorAll('.up.has-file').length >= 6, null, { timeout: 15000 });
 await shot(page, '04-documents');
 await page.click('#bar-next');
 
@@ -155,7 +177,7 @@ await admin.goto(BASE + '/admin/#/schedule?date=' + sd);
 await admin.waitForSelector('.sched');
 await shot(admin, '15-admin-schedule');
 await admin.goto(BASE + '/admin/#/calendar');
-await admin.waitForSelector('.cal');
+await admin.waitForSelector('.tl-veh');
 await shot(admin, '16-admin-calendar');
 await admin.goto(BASE + '/admin/#/fleet');
 await admin.waitForSelector('.fleet-tbl');
@@ -179,7 +201,17 @@ dp.on('pageerror', (e) => errors.push('desktop: ' + e.message));
 await dp.goto(BASE + '/book.html?vehicle=royal-enfield-hunter-350');
 await dp.waitForSelector('#vehicles .veh');
 await dp.waitForTimeout(500);
+await dp.click('#presets .preset[data-days="7"]');
+await dp.click('.veh[data-id="suzuki-burgman-street-125"] .veh-add');
+await dp.click('.veh[data-id="suzuki-burgman-street-125"] [data-step="1"]');
+await dp.waitForTimeout(400);
 await shot(dp, '20-desktop-ride');
+// Hover preview while choosing a custom range
+const dd = await dp.$$eval('#cal-months .cal-day:not([disabled])', (b) => b.map((x) => x.dataset.date));
+await dp.click(`#cal-months .cal-day[data-date="${dd[10]}"]`);
+await dp.hover(`#cal-months .cal-day[data-date="${dd[15]}"]`);
+await dp.waitForTimeout(200);
+await dp.screenshot({ path: path.join(OUT, '20b-desktop-picking.png') });
 await dp.goto(BASE + '/');
 await dp.waitForTimeout(500);
 await dp.screenshot({ path: path.join(OUT, '21-home.png') });
