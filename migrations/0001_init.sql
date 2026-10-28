@@ -1,4 +1,5 @@
--- Cloud Trails booking schema (Cloudflare D1). Generated from worker/db.js; the Worker also creates these tables on first use.
+-- Cloud Trails booking schema (Cloudflare D1). Generated from worker/db.js; the Worker also creates these tables on first use
+-- and adds the later columns (bookings.riders, bookings.vehicle_count).
 CREATE TABLE IF NOT EXISTS vehicles (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Scooty', tagline TEXT, image TEXT,
   day_rate INTEGER NOT NULL, deposit INTEGER NOT NULL DEFAULT 0, units INTEGER NOT NULL DEFAULT 1,
@@ -47,3 +48,12 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_booking ON events (booking_id);
 
 CREATE TABLE IF NOT EXISTS login_attempts (ip TEXT NOT NULL, at INTEGER NOT NULL);
+
+CREATE TABLE IF NOT EXISTS booking_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, booking_id INTEGER NOT NULL, vehicle_id TEXT NOT NULL, vehicle_name TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1, day_rate INTEGER NOT NULL DEFAULT 0, rent INTEGER NOT NULL DEFAULT 0, deposit INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_items_booking ON booking_items (booking_id);
+
+CREATE INDEX IF NOT EXISTS idx_items_vehicle ON booking_items (vehicle_id);
