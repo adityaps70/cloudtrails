@@ -66,8 +66,7 @@ async function boot() {
   S.vehicles = cfg.vehicles;
   S.max = cfg.max_vehicles || 10;
   const st = cfg.settings;
-  $('#top-wa').href = 'https://wa.me/' + st.whatsapp;
-  if (st.booking_enabled !== '1') return offline('Online booking is paused right now. Message us on WhatsApp and we\'ll sort you out quickly.');
+  if (st.booking_enabled !== '1') return offline('Online booking is paused right now. Call us and we\'ll sort you out quickly.');
 
   $('#app').hidden = false;
   $('#bar').hidden = false;
@@ -105,10 +104,6 @@ async function boot() {
 function offline(msg) {
   $('#offline').hidden = false;
   if (msg) $('#offline-msg').textContent = msg;
-  const p = new URLSearchParams(location.search);
-  const v = p.get('vehicle');
-  const text = "Hi Cloud Trails! I'd like to book" + (v ? ' the ' + v.replace(/-/g, ' ') : ' a ride') + '.';
-  $('#offline-wa').href = 'https://wa.me/918730883206?text=' + encodeURIComponent(text);
 }
 
 /* ---------------- dates & times ---------------- */
@@ -981,7 +976,7 @@ function renderPay() {
   $('#pay-later').hidden = upi;
   if (!upi) {
     $('#pay-later-msg').textContent = q.pay_now > 0
-      ? `We'll confirm your booking and share payment details on WhatsApp. Pay ${inr(q.total)} plus the ${inr(q.deposit)} refundable deposit at handover, by UPI or cash.`
+      ? `We'll confirm your booking and share payment details with you. Pay ${inr(q.total)} plus the ${inr(q.deposit)} refundable deposit at handover, by UPI or cash.`
       : `Pay ${inr(q.total)} plus the ${inr(q.deposit)} refundable deposit at handover, by UPI or cash.`;
     return;
   }
@@ -1119,8 +1114,6 @@ function done(r) {
   $('#done-ref').textContent = r.ref;
   $('#done-track').href = link;
   $('#done-link').href = link; $('#done-link').textContent = link;
-  const msg = `Hi Cloud Trails! I just booked online.\nRef: ${r.ref}\n${summary}, ${fmtWhen(startVal())} → ${fmtWhen(endVal())}\nName: ${val('name')}`;
-  $('#done-wa').href = `https://wa.me/${S.cfg.settings.whatsapp}?text=${encodeURIComponent(msg)}`;
   $('#copy-link').addEventListener('click', () => copy(link, $('#copy-link')));
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }

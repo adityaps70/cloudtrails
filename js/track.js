@@ -84,8 +84,6 @@ function render(b) {
   $('#t-timeline').innerHTML = b.timeline.slice().reverse().map((e) =>
     `<li>${esc(e.label)}<time>${esc(new Date(e.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }))}</time></li>`).join('');
 
-  const wa = `https://wa.me/${st.whatsapp}?text=${encodeURIComponent(`Hi Cloud Trails! About my booking ${b.ref}: `)}`;
-  $('#t-wa').href = wa; $('#top-wa').href = 'https://wa.me/' + st.whatsapp;
 
   const kinds = [...b.reupload_kinds, ...(b.can_pay && st.upi_ready ? ['payment'] : [])];
   $('#t-upload').hidden = !kinds.length;
