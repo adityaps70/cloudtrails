@@ -1986,12 +1986,6 @@ input[type='date'].field::-webkit-calendar-picker-indicator { filter: invert(0.8
 }
 .fleet-card:hover .fleet-img { filter: grayscale(0) brightness(1); transform: scale(1.06); }
 
-.tour-row {
-  border-bottom: 1px solid var(--line);
-  transition: background-color 0.35s ease, padding-left 0.35s ease;
-}
-.tour-row:hover { background: rgba(31, 54, 41, 0.35); padding-left: 1rem; }
-
 .file\:border-0::file-selector-button{
   border-width: 0px;
 }

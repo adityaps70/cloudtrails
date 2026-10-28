@@ -320,6 +320,7 @@ input[type='date'].field::-webkit-calendar-picker-indicator { filter: invert(0.8
 .veh-price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.15rem 0.35rem; }
 .veh-price span { color: var(--mist); font-size: 0.8rem; }
 .veh-price s { color: rgba(141,163,153,0.7); font-size: 0.8rem; }
+.veh-price .wk { flex-basis: 100%; font-style: normal; font-size: 0.72rem; color: #9ED2B0; }
 .veh-price em { font-style: normal; font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 800; color: #9ED2B0; border: 1px solid rgba(158,210,176,0.4); padding: 0.1rem 0.35rem; }
 .veh-dep { font-size: 0.75rem; color: var(--mist); }
 .veh-actions { margin-top: 0.8rem; }
