@@ -227,7 +227,7 @@ async function bookings(q) {
       ${chips.map(([k, l]) => `<button class="chip ${!extra && status === k ? 'on' : ''}" data-status="${k}">${l}</button>`).join('')}
     </div>
     <div class="filters">
-      <input class="in" id="f-q" type="search" placeholder="Search name, phone, ref, licence, vehicle no." value="${esc(q.get('q') || '')}">
+      <input class="in" id="f-q" type="search" placeholder="Search phone number, name, ref, licence, vehicle no." value="${esc(q.get('q') || '')}">
       <input class="in" id="f-from" type="date" value="${esc(q.get('from') || '')}" title="From">
       <input class="in" id="f-to" type="date" value="${esc(q.get('to') || '')}" title="To">
       <select class="in" id="f-sort" style="flex:0 1 170px"><option value="">Newest first</option><option value="start" ${q.get('sort') === 'start' ? 'selected' : ''}>By start date</option></select>
@@ -267,11 +267,11 @@ async function detail(id) {
 function waText(b, kind) {
   const first = b.name.split(' ')[0];
   const t = {
-    confirmed: `Hi ${first}! Your Cloud Trails booking ${b.ref} is confirmed ✅\n${b.vehicle_name}${b.assigned_reg ? ' (' + b.assigned_reg + ')' : ''}\n${when(b.start_at)} → ${when(b.end_at)}\n${b.handover === 'delivery' ? 'We\'ll deliver it to: ' + b.handover_address : 'Pick up at our counter: Nongrim Hills, near Mizo Modern School.'}\nPlease bring your original driving licence and ID. Refundable deposit: ₹${b.deposit}.`,
+    confirmed: `Hi ${first}! Your Cloud Trails booking ${b.ref} is confirmed ✅\n${b.vehicle_name}${b.assigned_reg ? ' (' + b.assigned_reg + ')' : ''}\n${when(b.start_at)} → ${when(b.end_at)}\n${b.handover === 'delivery' ? 'We\'ll deliver it to: ' + b.handover_address : 'Pick up at our counter: La Shimti, Mawdiangdiang (Golf Links area), New Shillong, Meghalaya 793018.'}\nPlease bring your original driving licence and ID. Refundable deposit: ₹${b.deposit}.`,
     docs: `Hi ${first}, this is Cloud Trails about booking ${b.ref}. We need clearer copies of some documents — please upload them on your booking status page (the link you got after booking), or reply here with photos.`,
     payment: `Hi ${first}, this is Cloud Trails about booking ${b.ref}. We couldn't match your UPI payment of ₹${b.pay_now}. Could you send the payment screenshot or the 12-digit UPI reference?`,
     onway: `Hi ${first}! Our rider is on the way with your ${b.vehicle_name} for booking ${b.ref}. Please keep your original licence and ID ready.`,
-    reminder: `Hi ${first}! A reminder that your Cloud Trails rental ${b.ref} ends ${when(b.end_at)}. ${b.return_mode === 'collection' ? 'We\'ll collect it from ' + b.return_address + '.' : 'Please return it to our Nongrim Hills counter with a full tank.'}`,
+    reminder: `Hi ${first}! A reminder that your Cloud Trails rental ${b.ref} ends ${when(b.end_at)}. ${b.return_mode === 'collection' ? 'We\'ll collect it from ' + b.return_address + '.' : 'Please return it to our Mawdiangdiang (New Shillong) counter with a full tank.'}`,
   }[kind];
   return `https://wa.me/${phoneDigits(b.phone)}?text=${encodeURIComponent(t)}`;
 }
