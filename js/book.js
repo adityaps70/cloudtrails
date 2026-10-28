@@ -797,7 +797,7 @@ function update() {
   $('#sum-cat').textContent = count > 1 ? `${count} vehicles` : one ? one.category : 'Your ride';
   $('#sum-name').textContent = items.length ? itemsSummary(q.items) : 'Choose your ride';
   $('#sum-dates').innerHTML = s && e ? `${esc(fmtWhen(s))} <span>→</span> ${esc(fmtWhen(e))}` : '';
-  const hand = radio('handover') === 'delivery' ? 'Delivered to you' : 'Pick up at Nongrim Hills';
+  const hand = radio('handover') === 'delivery' ? 'Delivered to you' : 'Pick up at Mawdiangdiang';
   const ret = radio('return_mode') === 'collection' ? 'collected from you' : 'return to counter';
   $('#sum-hand').textContent = `${hand} · ${ret}`;
   $('#sum-lines').innerHTML = items.length ? q.lines.map((l) => `<li><span>${esc(l.label)}</span><b>${inr(l.amount)}</b></li>`).join('')
@@ -969,7 +969,7 @@ function renderReview() {
   $('#review').innerHTML =
     row(cartCount() > 1 ? 'Rides' : 'Ride', esc(itemsSummary(q.items)), 0) +
     row('Dates', `${esc(fmtWhen(startVal()))} → ${esc(fmtWhen(endVal()))} · ${q.days} day${q.days > 1 ? 's' : ''}`, 0) +
-    row('Handover', del ? 'Delivered to ' + esc(val('handover_address')) : 'Pick up at our Nongrim Hills counter', 1) +
+    row('Handover', del ? 'Delivered to ' + esc(val('handover_address')) : 'Pick up at our Mawdiangdiang counter', 1) +
     row('Return', col ? 'Collected from ' + esc(same ? val('handover_address') : val('return_address')) : 'Return to the counter', 1) +
     row(need ? 'Lead rider' : 'Rider', `${esc(val('name'))} · ${esc(val('phone'))}`, 2) +
     (need ? row('Other riders', S.riders.slice(0, need).map((r) => esc(r.name)).join(', '), 3) : '') +

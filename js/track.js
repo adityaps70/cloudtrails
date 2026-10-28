@@ -25,13 +25,47 @@ function fmtWhen(s) {
   return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) + ', ' + d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
 }
 
+const bookingLink = (b) => `<a href="track.html?ref=${encodeURIComponent(b.ref)}&t=${encodeURIComponent(b.token)}"><span><b>${esc(b.ref)}</b> · ${esc(b.vehicle || '')}${b.status ? ` <span class="hint" style="margin:0">· ${esc((STATUS[b.status] || [b.status])[0])}</span>` : ''}</span><span class="hint" style="margin:0">${esc(fmtWhen(b.start))}</span></a>`;
+
 function list() {
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem('ct_bookings') || '[]'); } catch {}
   $('#lookup').hidden = false;
+  $('#saved').hidden = !saved.length;
   $('#saved').innerHTML = saved.length
-    ? saved.map((b) => `<a href="track.html?ref=${encodeURIComponent(b.ref)}&t=${encodeURIComponent(b.token)}"><span><b>${esc(b.ref)}</b> · ${esc(b.vehicle || '')}</span><span class="hint" style="margin:0">${esc(fmtWhen(b.start))}</span></a>`).join('')
-    : '<p class="hint" style="margin:0">No bookings saved on this device yet.</p>';
+    ? '<p class="eyebrow" style="margin:0 0 .4rem">Booked on this device</p>' + saved.map(bookingLink).join('') : '';
+  setupFind();
+}
+
+/* Find bookings by mobile number + date of birth */
+function setupFind() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const year = new Date().getFullYear();
+  $('#f-dd').innerHTML = '<option value="">DD</option>' + Array.from({ length: 31 }, (_, i) => `<option value="${pad(i + 1)}">${i + 1}</option>`).join('');
+  $('#f-mm').innerHTML = '<option value="">Month</option>' + months.map((m, i) => `<option value="${pad(i + 1)}">${m}</option>`).join('');
+  $('#f-yy').innerHTML = '<option value="">Year</option>' + Array.from({ length: 85 }, (_, i) => year - 17 - i).map((y) => `<option value="${y}">${y}</option>`).join('');
+  ['#f-dd', '#f-mm', '#f-yy'].forEach((id) => $(id).addEventListener('change', (e) => e.target.classList.toggle('is-set', !!e.target.value)));
+  $('#find').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('#f-err'), out = $('#found'), btn = $('#f-go');
+    err.textContent = ''; out.hidden = true;
+    const phone = $('#f-phone').value.trim();
+    const dd = $('#f-dd').value, mm = $('#f-mm').value, yy = $('#f-yy').value;
+    if (phone.replace(/\D/g, '').length < 10) { err.textContent = 'Enter the mobile number you booked with.'; return; }
+    if (!dd || !mm || !yy) { err.textContent = 'Choose your date of birth.'; return; }
+    btn.disabled = true; btn.textContent = 'Searching…';
+    try {
+      const r = await fetch(`${API}/api/bookings/lookup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone, dob: `${yy}-${mm}-${dd}` }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { err.textContent = j.error || 'Something went wrong. Please try again.'; return; }
+      if (!j.bookings.length) { err.textContent = 'No bookings found for that mobile number and date of birth. Check both, or call us.'; return; }
+      if (j.bookings.length === 1) { location.href = `track.html?ref=${encodeURIComponent(j.bookings[0].ref)}&t=${encodeURIComponent(j.bookings[0].token)}`; return; }
+      out.innerHTML = `<p class="eyebrow" style="margin:0 0 .4rem">${j.bookings.length} bookings found</p>` + j.bookings.map(bookingLink).join('');
+      out.hidden = false;
+    } catch { err.textContent = 'We couldn\'t reach our booking system. Please try again in a minute.'; }
+    finally { btn.disabled = false; btn.textContent = 'Find my booking'; }
+  });
 }
 
 async function load() {
