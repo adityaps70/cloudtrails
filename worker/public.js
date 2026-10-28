@@ -43,7 +43,7 @@ export async function getConfig(env) {
   return json({
     now: nowIST(),
     settings: publicSettings(settings),
-    vehicles: vehicles.map((v) => ({ id: v.id, name: v.name, category: v.category, tagline: v.tagline, image: v.image, day_rate: v.day_rate, deposit: v.deposit })),
+    vehicles: vehicles.map((v) => ({ id: v.id, name: v.name, category: v.category, tagline: v.tagline, image: v.image, day_rate: v.day_rate, week_rate: v.week_rate || 0, deposit: v.deposit })),
     terms: { version: TERMS_VERSION, agreement: AGREEMENT, consents: CONSENTS },
     id_types: ID_TYPES,
     max_vehicles: MAX_VEHICLES,
@@ -136,7 +136,7 @@ export function validateBooking(d, settings, items) {
     clean.riders.push(rider);
   }
 
-  clean.guide = d.guide ? 1 : 0;
+  clean.guide = 0; // guides are no longer offered
   clean.handover = d.handover === 'delivery' ? 'delivery' : 'pickup';
   clean.handover_address = clean.handover === 'delivery' ? str(d.handover_address, 300) : '';
   clean.handover_landmark = clean.handover === 'delivery' ? str(d.handover_landmark, 160) : '';
@@ -173,11 +173,11 @@ async function readUpload(file, kind) {
 export async function createBooking(request, env, ctx) {
   const ip = clientIp(request);
   const settings = await getSettings(env);
-  if (settings.booking_enabled !== '1') throw new HttpError(503, 'Online booking is paused right now. Please call us on +91 87308 83206.');
+  if (settings.booking_enabled !== '1') throw new HttpError(503, 'Online booking is paused right now. Please call us on +91 82579 29949.');
 
   const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings WHERE created_ip = ? AND created_at > ?")
     .bind(ip, new Date(Date.now() - 3600 * 1000).toISOString()).first();
-  if ((recent?.n || 0) >= 6) throw new HttpError(429, 'Too many bookings from this connection. Please call us on +91 87308 83206.');
+  if ((recent?.n || 0) >= 6) throw new HttpError(429, 'Too many bookings from this connection. Please call us on +91 82579 29949.');
 
   let form;
   try { form = await request.formData(); } catch { throw bad('Could not read the form. Please try again.'); }
@@ -210,7 +210,7 @@ export async function createBooking(request, env, ctx) {
     if (required && !uploads[kind] && !errors[kind]) errors[kind] = kind === 'signature' ? 'Please sign in the box.' : kind === 'selfie' ? 'Upload a photo of yourself.' : `Upload the ${docLabel(kind).toLowerCase()}.`;
   }
 
-  const q = items.length ? quote({ items, start: clean.start, end: clean.end, guide: clean.guide, delivery: clean.handover === 'delivery', collection: clean.return_mode === 'collection', settings }) : null;
+  const q = items.length ? quote({ items, start: clean.start, end: clean.end, delivery: clean.handover === 'delivery', collection: clean.return_mode === 'collection', settings }) : null;
   const upiReady = Boolean(settings.upi_id || settings.qr_file_id || settings.qr_static_path);
   const paymentNeeded = q && q.pay_now > 0 && upiReady;
   if (paymentNeeded && !uploads.payment && !errors.payment) errors.payment = 'Upload the screenshot of your UPI payment.';

@@ -11,7 +11,7 @@ export async function notifyNewBooking(env, settings, b, origin) {
   const html = `
     <h2>New booking ${esc(b.ref)}</h2>
     <p><b>${esc(b.name)}</b> · ${esc(b.phone)}</p>
-    <p>${esc(b.vehicle_name)}${b.guide ? ' + guide' : ''}<br>${esc(b.start_at.replace('T', ' '))} → ${esc(b.end_at.replace('T', ' '))} (${b.days} day${b.days > 1 ? 's' : ''})</p>
+    <p>${esc(b.vehicle_name)}<br>${esc(b.start_at.replace('T', ' '))} → ${esc(b.end_at.replace('T', ' '))} (${b.days} day${b.days > 1 ? 's' : ''})</p>
     <p>${b.handover === 'delivery' ? 'Doorstep delivery: ' + esc(b.handover_address) : 'Pickup at counter'}<br>
        ${b.return_mode === 'collection' ? 'Collection from: ' + esc(b.return_address) : 'Return at counter'}</p>
     <p>Total ₹${b.total} · pay now ₹${b.pay_now} · deposit ₹${b.deposit} · payment: ${esc(b.payment_status)}${b.upi_utr ? ' (UTR ' + esc(b.upi_utr) + ')' : ''}</p>

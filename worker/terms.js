@@ -1,7 +1,7 @@
 // Rental agreement and consent wording shown on the booking page and stored with every booking.
 // Change TERMS_VERSION whenever the wording changes — each booking records the version and a hash of what it agreed to.
 
-export const TERMS_VERSION = '2026-10-v2';
+export const TERMS_VERSION = '2026-10-v3';
 
 export const AGREEMENT = [
   {
@@ -27,7 +27,7 @@ export const AGREEMENT = [
     points: [
       'I am responsible for any damage to, or loss of, the vehicle and accessories during the rental, up to the cost of repair or replacement at an authorised service centre, and for the days the vehicle is off the road for repair.',
       'Traffic challans, fines, towing and impound charges incurred during the rental are mine to pay, including challans that arrive after the vehicle is returned.',
-      'In case of breakdown, accident or theft I will inform Cloud Trails immediately on +91 87308 83206 and will not get the vehicle repaired elsewhere without permission. Theft or accident must also be reported to the police.',
+      'In case of breakdown, accident or theft I will inform Cloud Trails immediately on +91 82579 29949 and will not get the vehicle repaired elsewhere without permission. Theft or accident must also be reported to the police.',
       'Cloud Trails may deduct unpaid charges from the deposit and may recover any amount above the deposit from me.',
     ],
   },
