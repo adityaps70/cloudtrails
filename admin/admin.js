@@ -631,7 +631,7 @@ async function calendar(q) {
         <a class="btn" href="#/calendar?from=${addDays(from, span)}&days=${span}" aria-label="Later">→</a>
         <input class="in" type="date" id="cal-from" value="${esc(from)}" style="width:auto">
       </div></div>
-    <div class="card tl-card"><div class="tl-scroll"><div class="tl">${head}${blocks}</div></div>
+    <div class="card tl-card"><div class="tl-scroll"><div class="tl-grid">${head}${blocks}</div></div>
       <div class="tl-legend"><span><i class="lg free"></i>All free</span><span><i class="lg part"></i>Partly booked</span><span><i class="lg full"></i>Fully booked</span>
         <span><i class="lg bar pending"></i>Pending</span><span><i class="lg bar confirmed"></i>Confirmed</span><span><i class="lg bar ongoing"></i>On the road</span></div></div>`;
   $('#cal-from').addEventListener('change', () => { location.hash = `#/calendar?from=${$('#cal-from').value}&days=${span}`; });
