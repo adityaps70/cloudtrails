@@ -3,7 +3,7 @@
 import { getSettings, saveSettings, listVehicles, peakBooked, peakOf, bookingItems, nowISO, logEvent, DEFAULT_SETTINGS } from './db.js';
 import { requireAdmin, login, logoutCookie, adminConfigured } from './auth.js';
 import { getFile, putFile, deleteFile, purgeBookingDocs } from './storage.js';
-import { DOC_KINDS, docLabel, isDocKind } from './public.js';
+import { DOC_KINDS, docLabel, isDocKind, ID_TYPES } from './public.js';
 import { quote, nowIST, parseLocal, itemsSummary } from '../js/pricing.js';
 import { json, bad, HttpError, str, sniffMime, csvCell } from './util.js';
 import { vapidKeys, validEndpoint, notifyAdmins } from './push.js';
@@ -66,7 +66,7 @@ export async function handleAdmin(request, env, url) {
 
   if (path === '/vehicles' && m === 'GET') return json({ vehicles: await listVehicles(env, { all: true }) });
   if (path === '/vehicles' && m === 'POST') return saveVehicle(env, await body(request));
-  if (path === '/settings' && m === 'GET') return json({ settings: await getSettings(env) });
+  if (path === '/settings' && m === 'GET') return json({ settings: await getSettings(env), id_types: ID_TYPES });
   if (path === '/settings' && m === 'POST') return updateSettings(env, await body(request));
   if (path === '/settings/qr' && m === 'POST') return uploadQr(request, env);
   if (path === '/settings/qr' && m === 'DELETE') {
@@ -380,6 +380,11 @@ async function updateSettings(env, d) {
     if (k in patch && (patch[k] === '' || int(patch[k]) == null)) throw bad(`${k.replace(/_/g, ' ')} must be a number.`);
   }
   if ('whatsapp' in patch) patch.whatsapp = patch.whatsapp.replace(/\D/g, '');
+  if ('id_types_off' in patch) {
+    const off = [...new Set(patch.id_types_off.split(',').map((s) => s.trim()).filter((t) => ID_TYPES.includes(t)))];
+    if (off.length >= ID_TYPES.length) throw bad('Keep at least one ID document switched on.');
+    patch.id_types_off = off.join(',');
+  }
   const before = await getSettings(env);
   await saveSettings(env, patch);
   // A new deposit amount applies to every vehicle (one vehicle can still be changed in Fleet & prices).

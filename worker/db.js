@@ -92,6 +92,7 @@ export const DEFAULT_SETTINGS = {
   max_days: '30',
   doc_retention_days: '30',
   notify_email: '',
+  id_types_off: '',          // ID documents not accepted at booking, comma-separated (e.g. 'Aadhaar,PAN card')
   qr_file_id: '',
   qr_static_path: '',      // a QR image shipped with the site (e.g. images/upi-qr.png), used when none is uploaded
 };

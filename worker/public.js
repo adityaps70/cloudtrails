@@ -30,7 +30,14 @@ export function isDocKind(kind) {
   return Boolean(DOC_KINDS[kind]) || /^rider([1-9])_licence$/.test(kind);
 }
 const MAX_FILE = 10 * 1024 * 1024;
-const ID_TYPES = ['Aadhaar', 'Passport', 'Voter ID', 'PAN card', 'Other government ID'];
+export const ID_TYPES = ['Aadhaar', 'Passport', 'Voter ID', 'PAN card', 'Other government ID'];
+
+/** ID documents customers may choose, after the ones switched off in Admin → Settings. */
+export function enabledIdTypes(settings) {
+  const off = String(settings?.id_types_off || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const on = ID_TYPES.filter((t) => !off.includes(t));
+  return on.length ? on : ID_TYPES;
+}
 
 function publicSettings(s) {
   const out = {};
@@ -47,7 +54,7 @@ export async function getConfig(env) {
     settings: publicSettings(settings),
     vehicles: vehicles.map((v) => ({ id: v.id, name: v.name, category: v.category, tagline: v.tagline, image: v.image, day_rate: v.day_rate, week_rate: v.week_rate || 0, month_rate: v.month_rate || 0, deposit: v.deposit })),
     terms: { version: TERMS_VERSION, agreement: AGREEMENT, consents: CONSENTS },
-    id_types: ID_TYPES,
+    id_types: enabledIdTypes(settings),
     max_vehicles: MAX_VEHICLES,
   });
 }
@@ -120,8 +127,8 @@ export function validateBooking(d, settings, items) {
   clean.licence_expiry = str(d.licence_expiry, 10);
   if (!isDate(clean.licence_expiry)) errors.licence_expiry = 'Enter the licence validity date.';
   else if (clean.licence_expiry < String(d.end || '').slice(0, 10)) errors.licence_expiry = 'Your licence must be valid for the whole rental.';
-  clean.id_type = ID_TYPES.includes(d.id_type) ? d.id_type : '';
-  if (!clean.id_type) errors.id_type = 'Choose the ID you are uploading.';
+  clean.id_type = enabledIdTypes(settings).includes(d.id_type) ? d.id_type : '';
+  if (!clean.id_type) errors.id_type = ID_TYPES.includes(d.id_type) ? `We don't accept ${d.id_type} for bookings right now. Please choose another ID.` : 'Choose the ID you are uploading.';
   clean.pillion_name = str(d.pillion_name, 80);
   clean.notes = str(d.notes, 600);
 
