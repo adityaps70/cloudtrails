@@ -14,7 +14,7 @@
   ],
   "workers_dev": true,
   // Daily at 03:00 IST: delete documents of finished bookings after the retention period (Admin → Settings).
-  "triggers": { "crons": ["30 21 * * *"] },
+  "triggers": { "crons": ["30 21 * * *", "*/15 * * * *"] },
   "d1_databases": [
     { "binding": "DB", "database_name": "cloudtrails", "database_id": "0441633f-9d63-422b-8dfe-fd291c9e21f5", "migrations_dir": "migrations" }
   ],
