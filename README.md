@@ -25,7 +25,7 @@ Until step 3 is done, the booking page on cloudtrails.in shows a "book on WhatsA
 
 ## How it works
 
-- **Prices** come from `js/pricing.js`, which the browser and the Worker share. The rules are: 1–2 days at the day rate, 3–6 days 10% off, and 7+ days at the weekly rate (5.5 × the day rate). A rental day is 24 hours, with a 1-hour grace period. Delivery and collection fees, the guide rate and what's paid online are set in Admin → Settings.
+- **Prices** come from `js/pricing.js`, which the browser and the Worker share. The rules are: 1–6 days at the day rate, and 7+ days at the vehicle's weekly price per day (₹600 for scooties by default; set in Admin → Settings, or per vehicle in Fleet & prices). A rental day is 24 hours, with a 1-hour grace period. Delivery and collection fees, the deposit and what's paid online are set in Admin → Settings.
 - **Availability:** each vehicle model has a number of units. Bookings that are pending, confirmed or on the road hold a unit. The booking page shows "booked out" when every unit overlaps.
 - **Booking statuses:** pending → confirmed → on the road → completed, or cancelled / rejected. Payment and documents each have their own check (to verify → verified, or mismatch / re-upload).
 - **Rental agreement:** the text is in `worker/terms.js`. Each booking stores the terms version, a hash of the wording, the typed name, the drawn signature, the time, the IP and the device. If you change the wording, bump `TERMS_VERSION`.
