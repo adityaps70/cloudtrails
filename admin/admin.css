@@ -281,3 +281,4 @@ a.stat:hover { border-color: var(--mustard); transform: translateY(-1px); }
 .lg.bar { width: 22px; height: 12px; border-radius: 6px; }
 .lg.bar.pending { background: var(--warn-bg); border: 1px dashed #D7A84A; } .lg.bar.confirmed { background: #2F7D4F; } .lg.bar.ongoing { background: var(--info); }
 @media (max-width: 700px) { .tl-row { grid-template-columns: 150px repeat(var(--n), minmax(52px, 1fr)); } .tl-name img { display: none; } }
+.doc em.live { font-style: normal; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; background: var(--ok); padding: 0.05rem 0.35rem; border-radius: 4px; margin-left: 0.2rem; }

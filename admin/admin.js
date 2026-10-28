@@ -284,12 +284,13 @@ function renderDetail({ booking: b, files, events, doc_labels, items = [], rider
   const payFiles = files.filter((f) => f.kind === 'payment');
   const sig = files.filter((f) => f.kind === 'signature').pop();
   const open = ['pending', 'confirmed'].includes(b.status);
+  const liveSelfie = events.some((e) => e.action === 'created' && /selfie taken live/.test(e.detail || ''));
   const fileTile = (f) => {
     const url = `/admin/api/files/${f.id}`;
     const old = latest[f.kind] !== f.id;
     return `<button type="button" class="doc ${old ? 'old' : ''}" data-file="${f.id}" data-mime="${esc(f.mime)}">
       ${f.mime.startsWith('image/') && f.mime !== 'image/heic' ? `<img src="${url}" alt="${esc(doc_labels[f.kind] || f.kind)}" loading="lazy">` : `<span class="pdf">${f.mime === 'application/pdf' ? 'PDF' : 'HEIC'}</span>`}
-      <span>${esc(doc_labels[f.kind] || f.kind)}<small>${old ? 'Older upload · ' : ''}${esc(stamp(f.created_at))}</small></span></button>`;
+      <span>${esc(doc_labels[f.kind] || f.kind)}${f.kind === 'selfie' && liveSelfie && !old ? ' <em class="live">Live camera</em>' : ''}<small>${old ? 'Older upload · ' : ''}${esc(stamp(f.created_at))}</small></span></button>`;
   };
 
   const acts = [];
