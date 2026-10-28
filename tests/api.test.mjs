@@ -399,3 +399,40 @@ test('monthly price: setting updates scooties; 30-day booking priced monthly', a
   assert.equal(q.rent, 2 * 14000);
   assert.match(q.lines[0].label, /monthly price/);
 });
+
+test('customer finds bookings by mobile number + date of birth; admin search matches typed phone', async () => {
+  const env = makeEnv();
+  const cookie = await adminCookie(env);
+  let r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(bookingData()) });
+  const created = await r.json();
+  assert.equal(r.status, 201, JSON.stringify(created));
+  const look = (body, ip = '1.1.1.1') => call(env, '/api/bookings/lookup', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': ip }, body: JSON.stringify(body) });
+  // Wrong date of birth finds nothing (same answer as an unknown number)
+  r = await look({ phone: '9876543210', dob: '1990-01-01' });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).bookings.length, 0);
+  // Right number in any format + right DOB
+  r = await look({ phone: '+91 98765 43210', dob: '1996-04-12' });
+  const j = await r.json();
+  assert.equal(j.bookings.length, 1);
+  assert.equal(j.bookings[0].ref, created.ref);
+  // The signed link opens the status page; a tampered one doesn't
+  r = await call(env, `/api/bookings/${created.ref}?t=${encodeURIComponent(j.bookings[0].token)}`);
+  assert.equal(r.status, 200);
+  r = await call(env, `/api/bookings/${created.ref}?t=${encodeURIComponent(j.bookings[0].token.slice(0, -2) + 'xx')}`);
+  assert.equal(r.status, 404);
+  // A link for one booking can't open another
+  r = await call(env, `/api/bookings/CT-ZZZZZZ?t=${encodeURIComponent(j.bookings[0].token)}`);
+  assert.equal(r.status, 404);
+  // Validation and throttling
+  r = await look({ phone: '123', dob: '1996-04-12' });
+  assert.equal(r.status, 400);
+  for (let i = 0; i < 10; i++) await look({ phone: '9876543210', dob: '1990-01-0' + (i % 9 + 1) }, '2.2.2.2');
+  r = await look({ phone: '9876543210', dob: '1996-04-12' }, '2.2.2.2');
+  assert.equal(r.status, 429);
+  // Admin search finds the booking however the number is typed
+  for (const q of ['98765 43210', '+91 9876543210', '09876543210', '43210']) {
+    const list = await (await admin(env, cookie, '/bookings?q=' + encodeURIComponent(q))).json();
+    assert.equal(list.total, 1, q);
+  }
+});
