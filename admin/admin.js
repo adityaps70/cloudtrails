@@ -758,7 +758,8 @@ async function pushCard(el) {
 
 /* ---------------- settings ---------------- */
 async function settings() {
-  const [{ settings: s }, { vehicles: fleetList }] = await Promise.all([api('/settings'), api('/vehicles')]);
+  const [{ settings: s, id_types: idTypes = [] }, { vehicles: fleetList }] = await Promise.all([api('/settings'), api('/vehicles')]);
+  const idOff = String(s.id_types_off || '').split(',').filter(Boolean);
   const depOdd = fleetList.filter((v) => String(v.deposit) !== String(s.default_deposit));
   const scooties = fleetList.filter((v) => /^scooty/i.test(v.category || ''));
   const wkOdd = scooties.filter((v) => String(v.week_rate || 0) !== String(s.week_rate_scooty));
@@ -776,6 +777,11 @@ async function settings() {
           <label class="switch"><input type="checkbox" data-k="booking_enabled" ${s.booking_enabled === '1' ? 'checked' : ''}> Accept bookings online</label>
           <p class="small muted">When off, the booking page asks customers to call you instead.</p>
           <p class="small">Booking page: <a class="link" href="${esc(bookingUrl)}" target="_blank" rel="noopener">${esc(bookingUrl)}</a></p></div>
+
+        <div class="card"><h2>Accepted ID documents</h2>
+          <p class="small muted" style="margin-top:0">Customers upload one of these with their driving licence. Untick any you don't want to accept.</p>
+          <div class="checks id-checks">${idTypes.map((t) => `<label class="switch"><input type="checkbox" class="id-type" value="${esc(t)}" ${idOff.includes(t) ? '' : 'checked'}> ${esc(t)}</label>`).join('')}</div>
+          <p class="err small" id="id-err" style="margin:.4rem 0 0"></p></div>
 
         <div class="card"><h2>UPI payment</h2>
           ${f('upi_id', 'UPI ID', 'placeholder="cloudtrails@okicici"', 'The booking page builds a QR with the exact amount filled in.')}
@@ -830,6 +836,11 @@ async function settings() {
     $$('[data-k]').forEach((i) => { d[i.dataset.k] = i.type === 'checkbox' ? (i.checked ? '1' : '0') : i.value.trim(); });
     if ($('#dep-all')?.checked) d.apply_deposit_all = true;
     if ($('#wk-all')?.checked) d.apply_week_all = true;
+    const idBoxes = $$('.id-type');
+    if (idBoxes.length) {
+      if (!idBoxes.some((c) => c.checked)) { $('#id-err').textContent = 'Keep at least one ID document switched on.'; toast('Keep at least one ID document switched on'); return; }
+      d.id_types_off = idBoxes.filter((c) => !c.checked).map((c) => c.value).join(',');
+    }
     if ($('#mo-all')?.checked) d.apply_month_all = true;
     try { await post('/settings', d); toast('Settings saved'); settings(); } catch (e) { toast(e.message); }
   });
