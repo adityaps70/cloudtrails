@@ -115,6 +115,7 @@ async function start() {
   if (r.status === 503) return showLogin(j.error || 'Admin is not set up yet.');
   if (!r.ok) return showLogin();
   ME = j;
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin/' }).catch(() => {});
   $('#login').hidden = true;
   $('#shell').hidden = false;
   route();
@@ -667,6 +668,83 @@ async function fleet() {
   }));
 }
 
+/* ---------------- push notifications (this device) ---------------- */
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) || isIOS() ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'Device';
+  const app = isStandalone() ? 'home-screen app' : /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'browser';
+  return `${dev} · ${app}`;
+}
+function b64ToBytes(s) {
+  const b = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+}
+
+async function pushCard(el) {
+  if (!el) return;
+  let info;
+  try { info = await api('/push'); } catch (e) { el.innerHTML = `<h2>Phone notifications</h2><p class="small muted">${esc(e.message)}</p>`; return; }
+  let sub = null;
+  if (pushSupported()) {
+    try { const reg = await navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin/' }); await navigator.serviceWorker.ready; sub = await reg.pushManager.getSubscription(); } catch {}
+  }
+  const here = !!sub && info.devices.some((d) => d.endpoint === sub.endpoint);
+  const denied = pushSupported() && Notification.permission === 'denied';
+  let status;
+  if (!pushSupported()) {
+    status = isIOS() && !isStandalone()
+      ? `<div class="alert info"><b>On iPhone, notifications only work in the home-screen app.</b><br>Open <b>cloudtrails.in/admin</b> in Safari → tap Share → <b>Add to Home Screen</b>. Then open <b>CT Admin</b> from your home screen and turn notifications on here.</div>`
+      : '<div class="alert warn">This browser can\'t receive notifications. Use the admin home-screen app on your phone (iPhone: iOS 16.4 or newer), or Chrome / Edge / Safari on a computer.</div>';
+  } else if (denied) {
+    status = `<div class="alert warn">Notifications are blocked for this ${isStandalone() ? 'app' : 'browser'}. ${isIOS() ? 'Open iPhone Settings → Notifications → CT Admin and allow them' : 'Allow notifications for this site in your browser settings'}, then come back here.</div>`;
+  } else if (here) {
+    status = '<p class="small" style="margin:0 0 .6rem"><span class="pill ok">On</span> This device gets a notification for every new booking.</p><div class="actions"><button class="btn sm" id="push-test">Send a test</button><button class="btn sm danger" id="push-off">Turn off on this device</button></div>';
+  } else {
+    status = `<p class="small muted" style="margin:0 0 .6rem">Get a notification on this ${isStandalone() ? 'phone' : 'device'} the moment a new booking comes in.</p><button class="btn primary" id="push-on">Turn on notifications</button>`;
+  }
+  const list = info.devices.length
+    ? `<p class="lb" style="margin:1rem 0 .3rem">Devices getting notifications</p><ul class="push-devs">${info.devices.map((d) => `<li><span>${esc(d.label || 'Device')}${sub && d.endpoint === sub.endpoint ? ' <span class="muted small">(this one)</span>' : ''}<br><span class="muted small">Added ${esc(stamp(d.created_at))}${d.last_ok_at ? ' · last sent ' + esc(stamp(d.last_ok_at)) : ''}</span></span><button class="btn sm" data-push-del="${d.id}">Remove</button></li>`).join('')}</ul>`
+      + (here ? '' : '<button class="btn sm" id="push-test" style="margin-top:.6rem">Send a test to these devices</button>')
+    : '';
+  el.innerHTML = `<h2>Phone notifications</h2>${status}${list}`;
+
+  $('#push-on', el)?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    // Ask first, straight from the tap (iPhone only shows the prompt for a direct tap).
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { toast('Notifications were not allowed'); return pushCard(el); }
+    btn.disabled = true; btn.textContent = 'Turning on…';
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      let s = await reg.pushManager.getSubscription();
+      const key = b64ToBytes(info.publicKey);
+      if (s) {
+        const cur = s.options && s.options.applicationServerKey ? new Uint8Array(s.options.applicationServerKey) : null;
+        if (cur && cur.join() !== key.join()) { await s.unsubscribe(); s = null; }
+      }
+      if (!s) s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      await post('/push/subscribe', { subscription: s.toJSON(), label: deviceLabel() });
+      toast('Notifications are on for this device');
+    } catch (err) { toast('Couldn\'t turn on notifications: ' + (err.message || err)); }
+    pushCard(el);
+  });
+  $('#push-off', el)?.addEventListener('click', async () => {
+    try { await post('/push/remove', { endpoint: sub.endpoint }); await sub.unsubscribe(); toast('Notifications turned off for this device'); } catch (err) { toast(err.message); }
+    pushCard(el);
+  });
+  $('#push-test', el)?.addEventListener('click', async () => {
+    try { const r = await post('/push/test', {}); toast(r.sent ? `Test sent to ${r.sent} device${r.sent > 1 ? 's' : ''}` : 'Couldn\'t reach any device — try turning notifications off and on again'); } catch (err) { toast(err.message); }
+    pushCard(el);
+  });
+  $$('[data-push-del]', el).forEach((b) => b.addEventListener('click', async () => {
+    try { await post('/push/remove', { id: Number(b.dataset.pushDel) }); toast('Device removed'); } catch (err) { toast(err.message); }
+    pushCard(el);
+  }));
+}
+
 /* ---------------- settings ---------------- */
 async function settings() {
   const [{ settings: s }, { vehicles: fleetList }] = await Promise.all([api('/settings'), api('/vehicles')]);
@@ -681,6 +759,8 @@ async function settings() {
     <div class="head"><div><h1>Settings</h1><p class="sub">Changes apply to the booking page straight away.</p></div><div class="head-actions"><button class="btn" id="logout2">Sign out</button><button class="btn primary" id="save">Save settings</button></div></div>
     <div class="set-grid">
       <div>
+        <div class="card" id="push-card"><h2>Phone notifications</h2><p class="small muted">Loading…</p></div>
+
         <div class="card"><h2>Online booking</h2>
           <label class="switch"><input type="checkbox" data-k="booking_enabled" ${s.booking_enabled === '1' ? 'checked' : ''}> Accept bookings online</label>
           <p class="small muted">When off, the booking page asks customers to call you instead.</p>
@@ -733,6 +813,7 @@ async function settings() {
       </div>
     </div>`;
   $('#logout2').addEventListener('click', () => $('#logout').click());
+  pushCard($('#push-card'));
   $('#save').addEventListener('click', async () => {
     const d = {};
     $$('[data-k]').forEach((i) => { d[i.dataset.k] = i.type === 'checkbox' ? (i.checked ? '1' : '0') : i.value.trim(); });
