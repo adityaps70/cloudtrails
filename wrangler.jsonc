@@ -6,6 +6,12 @@
   // plus the booking API at /api/* and the admin panel at /admin.
   "assets": { "directory": "./", "binding": "ASSETS", "run_worker_first": true },
   "observability": { "enabled": true },
+  // cloudtrails.in (DNS on Cloudflare, registered at GoDaddy). The Worker serves the whole site there,
+  // with the admin at cloudtrails.in/admin. Keep workers_dev on so the workers.dev address keeps working too.
+  "routes": [
+    { "pattern": "cloudtrails.in", "custom_domain": true },
+    { "pattern": "www.cloudtrails.in", "custom_domain": true }
+  ],
   "workers_dev": true,
   // Daily at 03:00 IST: delete documents of finished bookings after the retention period (Admin → Settings).
   "triggers": { "crons": ["30 21 * * *"] },

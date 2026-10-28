@@ -2,10 +2,10 @@
 
 Website and online booking platform for Cloud Trails Rentals, Shillong.
 
-- **Website** (`index.html`): the public site. It's served from GitHub Pages at cloudtrails.in.
+- **Website** (`index.html`): the public site, served by the Cloudflare Worker at cloudtrails.in (DNS on Cloudflare since Oct 2026; GitHub Pages was the earlier host).
 - **Booking page** (`book.html`): customers choose dates and a vehicle, pick counter pickup or doorstep delivery (and counter return or doorstep collection), enter their details, upload their licence, ID and a selfie, sign the rental agreement and pay by UPI.
 - **Booking status page** (`track.html`): each customer gets a private link to follow their booking and re-upload anything you ask for.
-- **Admin panel** (`/admin` on the Worker): review bookings, check documents and payments, confirm, hand over, close rentals, see the day's deliveries and returns, check availability, and edit the fleet, prices and settings.
+- **Admin panel** (cloudtrails.in/admin): review bookings, check documents and payments, confirm, hand over, close rentals, see the day's deliveries and returns, check availability, and edit the fleet, prices and settings.
 - **Backend** (`worker/`): a Cloudflare Worker with a D1 database (`cloudtrails`) and private document storage in KV (`cloudtrails-documents`). Both are already created in the Cloudflare account and referenced in `wrangler.jsonc`.
 
 ## Deploy (one time, about 5 minutes)
