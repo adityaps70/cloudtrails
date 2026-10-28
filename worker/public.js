@@ -1,9 +1,9 @@
 // Public booking API used by book.html and track.html.
 
-import { getSettings, listVehicles, peakBooked, nowISO, logEvent, PUBLIC_SETTINGS } from './db.js';
+import { getSettings, listVehicles, peakBooked, nowISO, logEvent, bookingItems, PUBLIC_SETTINGS } from './db.js';
 import { AGREEMENT, CONSENTS, TERMS_VERSION, termsHash } from './terms.js';
 import { putFile, getFile } from './storage.js';
-import { quote, nowIST, parseLocal, rentalDays } from '../js/pricing.js';
+import { quote, nowIST, parseLocal, rentalDays, itemsSummary } from '../js/pricing.js';
 import { json, bad, HttpError, clientIp, randomRef, randomHex, sha256Hex, str, normPhone, isEmail, isDate, sniffMime } from './util.js';
 import { notifyNewBooking } from './notify.js';
 
@@ -16,6 +16,17 @@ export const DOC_KINDS = {
   payment: { label: 'Payment screenshot', required: false },
   signature: { label: 'Signature', required: true },
 };
+export const MAX_VEHICLES = 10; // per booking
+
+/** Label for any document kind, including other riders' licences ("rider2_licence"). */
+export function docLabel(kind) {
+  if (DOC_KINDS[kind]) return DOC_KINDS[kind].label;
+  const m = /^rider(\d+)_licence$/.exec(kind);
+  return m ? `Rider ${Number(m[1]) + 1} — driving licence` : kind;
+}
+export function isDocKind(kind) {
+  return Boolean(DOC_KINDS[kind]) || /^rider([1-9])_licence$/.test(kind);
+}
 const MAX_FILE = 10 * 1024 * 1024;
 const ID_TYPES = ['Aadhaar', 'Passport', 'Voter ID', 'PAN card', 'Other government ID'];
 
@@ -35,6 +46,7 @@ export async function getConfig(env) {
     vehicles: vehicles.map((v) => ({ id: v.id, name: v.name, category: v.category, tagline: v.tagline, image: v.image, day_rate: v.day_rate, deposit: v.deposit })),
     terms: { version: TERMS_VERSION, agreement: AGREEMENT, consents: CONSENTS },
     id_types: ID_TYPES,
+    max_vehicles: MAX_VEHICLES,
   });
 }
 
@@ -72,10 +84,12 @@ export async function availability(env, url) {
 }
 
 /** Validates the booking form. Returns { errors, clean }. Exported for tests. */
-export function validateBooking(d, settings, vehicle) {
+export function validateBooking(d, settings, items) {
   const errors = checkWindow(d.start, d.end, settings);
   const clean = {};
-  if (!vehicle) errors.vehicle = 'Choose a vehicle.';
+  const count = (items || []).reduce((a, i) => a + i.qty, 0);
+  if (!count) errors.vehicle = 'Choose at least one vehicle.';
+  else if (count > MAX_VEHICLES) errors.vehicle = `Online bookings are up to ${MAX_VEHICLES} vehicles. Message us for bigger groups.`;
 
   clean.name = str(d.name, 80);
   if (clean.name.length < 3) errors.name = 'Enter your full name as on your licence.';
@@ -109,6 +123,19 @@ export function validateBooking(d, settings, vehicle) {
   clean.pillion_name = str(d.pillion_name, 80);
   clean.notes = str(d.notes, 600);
 
+  // Every extra vehicle needs its own licensed rider.
+  clean.riders = [];
+  const riders = Array.isArray(d.riders) ? d.riders : [];
+  for (let n = 1; n < Math.min(count, MAX_VEHICLES); n++) {
+    const r = riders[n - 1] || {};
+    const rider = { name: str(r.name, 80), phone: r.phone ? normPhone(r.phone) : '', licence_no: str(r.licence_no, 24).toUpperCase().replace(/\s+/g, ' ') };
+    if (rider.name.length < 3) errors[`rider${n}_name`] = 'Enter this rider\'s full name.';
+    if (r.phone && !rider.phone) errors[`rider${n}_phone`] = 'Enter a valid mobile number.';
+    if (!/^[A-Z0-9][A-Z0-9 \-\/]{6,22}$/.test(rider.licence_no)) errors[`rider${n}_licence_no`] = 'Enter this rider\'s licence number.';
+    else if (rider.licence_no === clean.licence_no || clean.riders.some((x) => x.licence_no === rider.licence_no)) errors[`rider${n}_licence_no`] = 'Each vehicle needs a different licensed rider.';
+    clean.riders.push(rider);
+  }
+
   clean.guide = d.guide ? 1 : 0;
   clean.handover = d.handover === 'delivery' ? 'delivery' : 'pickup';
   clean.handover_address = clean.handover === 'delivery' ? str(d.handover_address, 300) : '';
@@ -134,11 +161,11 @@ export function validateBooking(d, settings, vehicle) {
 
 async function readUpload(file, kind) {
   if (!file || typeof file === 'string' || !file.size) return null;
-  if (file.size > MAX_FILE) throw bad(`${DOC_KINDS[kind]?.label || kind} is larger than 10 MB.`, { field: kind });
+  if (file.size > MAX_FILE) throw bad(`${docLabel(kind)} is larger than 10 MB.`, { field: kind });
   const bytes = new Uint8Array(await file.arrayBuffer());
   const mime = sniffMime(bytes);
   const allowed = kind === 'signature' ? ['image/png'] : ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'];
-  if (!allowed.includes(mime)) throw bad(`${DOC_KINDS[kind]?.label || kind} must be a photo (JPG/PNG) or PDF.`, { field: kind });
+  if (!allowed.includes(mime)) throw bad(`${docLabel(kind)} must be a photo (JPG/PNG) or PDF.`, { field: kind });
   return { bytes, mime };
 }
 
@@ -156,22 +183,33 @@ export async function createBooking(request, env, ctx) {
   let d;
   try { d = JSON.parse(form.get('data') || '{}'); } catch { throw bad('Could not read the form. Please try again.'); }
 
-  const vehicle = await env.DB.prepare('SELECT * FROM vehicles WHERE id = ? AND active = 1').bind(String(d.vehicle_id || '')).first();
-  const { errors, clean } = validateBooking(d, settings, vehicle);
+  // Vehicles: items [{vehicle_id, qty}] (or a single vehicle_id from older pages), merged by model.
+  const active = new Map((await listVehicles(env)).map((v) => [v.id, v]));
+  const wanted = Array.isArray(d.items) ? d.items : d.vehicle_id ? [{ vehicle_id: d.vehicle_id, qty: 1 }] : [];
+  const qtyById = new Map();
+  for (const it of wanted) {
+    const v = active.get(String(it?.vehicle_id || ''));
+    const n = Math.floor(Number(it?.qty) || 0);
+    if (v && n > 0) qtyById.set(v.id, Math.min(MAX_VEHICLES, (qtyById.get(v.id) || 0) + n));
+  }
+  const items = [...qtyById].map(([id, qty]) => ({ vehicle: active.get(id), qty }));
+  const { errors, clean } = validateBooking(d, settings, items);
 
-  // Files
+  // Files: the lead rider's documents, plus a licence photo for every extra rider.
+  const kinds = [...Object.keys(DOC_KINDS), ...clean.riders.map((_, i) => `rider${i + 1}_licence`)];
   const uploads = {};
-  for (const kind of Object.keys(DOC_KINDS)) {
+  for (const kind of kinds) {
     try {
       const f = await readUpload(form.get(kind), kind);
       if (f) uploads[kind] = f;
     } catch (e) { errors[kind] = e.message; }
   }
-  for (const [kind, meta] of Object.entries(DOC_KINDS)) {
-    if (meta.required && !uploads[kind] && !errors[kind]) errors[kind] = kind === 'signature' ? 'Please sign in the box.' : `Upload your ${meta.label.toLowerCase()}.`;
+  for (const kind of kinds) {
+    const required = DOC_KINDS[kind] ? DOC_KINDS[kind].required : true;
+    if (required && !uploads[kind] && !errors[kind]) errors[kind] = kind === 'signature' ? 'Please sign in the box.' : kind === 'selfie' ? 'Upload a photo of yourself.' : `Upload the ${docLabel(kind).toLowerCase()}.`;
   }
 
-  const q = vehicle ? quote({ vehicle, start: clean.start, end: clean.end, guide: clean.guide, delivery: clean.handover === 'delivery', collection: clean.return_mode === 'collection', settings }) : null;
+  const q = items.length ? quote({ items, start: clean.start, end: clean.end, guide: clean.guide, delivery: clean.handover === 'delivery', collection: clean.return_mode === 'collection', settings }) : null;
   const upiReady = Boolean(settings.upi_id || settings.qr_file_id || settings.qr_static_path);
   const paymentNeeded = q && q.pay_now > 0 && upiReady;
   if (paymentNeeded && !uploads.payment && !errors.payment) errors.payment = 'Upload the screenshot of your UPI payment.';
@@ -179,8 +217,13 @@ export async function createBooking(request, env, ctx) {
   if (Object.keys(errors).length) throw new HttpError(422, 'Please fix the highlighted fields.', { errors });
 
   // Availability, checked last so it's as fresh as possible.
-  const used = await peakBooked(env, vehicle.id, clean.start, clean.end);
-  if (used >= vehicle.units) throw new HttpError(409, `Sorry — every ${vehicle.name} is booked for those dates. Pick another vehicle or time.`, { errors: { vehicle: 'Not available for these dates.' } });
+  for (const { vehicle, qty } of items) {
+    const left = Math.max(0, vehicle.units - await peakBooked(env, vehicle.id, clean.start, clean.end));
+    if (qty > left) {
+      const msg = left ? `Only ${left} ${vehicle.name} ${left === 1 ? 'is' : 'are'} free for those dates.` : `Sorry — every ${vehicle.name} is booked for those dates.`;
+      throw new HttpError(409, msg + ' Change the number or pick another time.', { errors: { vehicle: msg } });
+    }
+  }
 
   const ref = randomRef();
   const token = randomHex(20);
@@ -191,16 +234,20 @@ export async function createBooking(request, env, ctx) {
       handover, handover_address, handover_landmark, return_mode, return_address,
       name, phone, email, dob, address, hometown, emergency_name, emergency_phone, licence_no, licence_expiry, id_type, pillion_name, notes,
       rent, guide_fee, delivery_fee, collection_fee, total, deposit, pay_now, upi_utr,
-      consent_name, consent_at, consent_ip, consent_ua, terms_version, terms_hash, created_ip, created_at, updated_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?)`).bind(
-    ref, await sha256Hex(token), 'pending', payment_status, 'submitted', vehicle.id, vehicle.name, clean.guide, clean.start, clean.end, q.days,
+      consent_name, consent_at, consent_ip, consent_ua, terms_version, terms_hash, created_ip, created_at, updated_at, riders, vehicle_count
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?,?)`).bind(
+    ref, await sha256Hex(token), 'pending', payment_status, 'submitted', items[0].vehicle.id, itemsSummary(q.items), clean.guide, clean.start, clean.end, q.days,
     clean.handover, clean.handover_address || null, clean.handover_landmark || null, clean.return_mode, clean.return_address || null,
     clean.name, clean.phone, clean.email || null, clean.dob, clean.address, clean.hometown || null, clean.emergency_name, clean.emergency_phone,
     clean.licence_no, clean.licence_expiry, clean.id_type, clean.pillion_name || null, clean.notes || null,
     q.rent, q.guide_fee, q.delivery_fee, q.collection_fee, q.total, q.deposit, q.pay_now, clean.upi_utr || null,
     clean.consent_name, now, ip, str(request.headers.get('user-agent'), 300), TERMS_VERSION, await termsHash(), ip, now, now,
+    clean.riders.length ? JSON.stringify(clean.riders) : null, q.qty,
   ).run();
   const bookingId = res.meta.last_row_id;
+  await env.DB.batch(q.items.map((i) => env.DB.prepare(
+    'INSERT INTO booking_items (booking_id, vehicle_id, vehicle_name, qty, day_rate, rent, deposit) VALUES (?,?,?,?,?,?,?)')
+    .bind(bookingId, i.vehicle_id, i.name, i.qty, i.day_rate, i.rent, i.deposit)));
 
   try {
     for (const [kind, f] of Object.entries(uploads)) await putFile(env, { bookingId, kind, mime: f.mime, bytes: f.bytes });
@@ -209,7 +256,7 @@ export async function createBooking(request, env, ctx) {
     await env.DB.prepare("UPDATE bookings SET status = 'cancelled', admin_notes = ? WHERE id = ?").bind('Upload failed: ' + e.message, bookingId).run();
     throw new HttpError(500, 'We could not save your documents. Please try again in a minute.');
   }
-  await logEvent(env, bookingId, 'customer', 'created', `${vehicle.name}, ${clean.start.replace('T', ' ')} → ${clean.end.replace('T', ' ')}, ${clean.handover === 'delivery' ? 'delivery' : 'counter pickup'} / ${clean.return_mode === 'collection' ? 'collection' : 'counter return'}`);
+  await logEvent(env, bookingId, 'customer', 'created', `${itemsSummary(q.items)}, ${clean.start.replace('T', ' ')} → ${clean.end.replace('T', ' ')}, ${clean.handover === 'delivery' ? 'delivery' : 'counter pickup'} / ${clean.return_mode === 'collection' ? 'collection' : 'counter return'}`);
 
   const booking = await env.DB.prepare('SELECT * FROM bookings WHERE id = ?').bind(bookingId).first();
   ctx?.waitUntil?.(notifyNewBooking(env, settings, booking, new URL(request.url).origin).catch(() => {}));
@@ -246,17 +293,18 @@ export async function bookingStatus(env, ref, token) {
   const timeline = (results || []).filter((e) => CUSTOMER_EVENTS[e.action]).map((e) => ({ at: e.at, label: CUSTOMER_EVENTS[e.action] }));
   const open = ['pending', 'confirmed'].includes(b.status);
   const canPay = open && ['awaiting', 'mismatch'].includes(b.payment_status);
-  const reupload = open && b.docs_status === 'reupload' ? String(b.reupload_kinds || '').split(',').filter((k) => DOC_KINDS[k]) : [];
+  const reupload = open && b.docs_status === 'reupload' ? String(b.reupload_kinds || '').split(',').filter(isDocKind) : [];
+  const items = await bookingItems(env, b.id);
   return json({
     ref: b.ref, status: b.status, payment_status: b.payment_status, docs_status: b.docs_status,
     customer_message: b.customer_message, first_name: b.name.split(' ')[0],
-    vehicle_name: b.vehicle_name, guide: !!b.guide, start: b.start_at, end: b.end_at, days: b.days,
+    vehicle_name: b.vehicle_name, items: items.map((i) => ({ name: i.vehicle_name, qty: i.qty, rent: i.rent })), vehicle_count: b.vehicle_count || 1, guide: !!b.guide, start: b.start_at, end: b.end_at, days: b.days,
     handover: b.handover, handover_address: b.handover_address, return_mode: b.return_mode, return_address: b.return_address,
     rent: b.rent, guide_fee: b.guide_fee, delivery_fee: b.delivery_fee, collection_fee: b.collection_fee,
     total: b.total, deposit: b.deposit, pay_now: b.pay_now, paid_amount: b.paid_amount,
     assigned_reg: ['confirmed', 'ongoing'].includes(b.status) ? b.assigned_reg : null,
     timeline, can_pay: canPay, reupload_kinds: reupload,
-    upload_labels: Object.fromEntries(Object.entries(DOC_KINDS).map(([k, v]) => [k, v.label])),
+    upload_labels: Object.fromEntries([...Object.keys(DOC_KINDS), ...reupload].map((k) => [k, docLabel(k)])),
     settings: publicSettings(settings),
   });
 }
@@ -266,7 +314,7 @@ export async function customerUpload(request, env, ref, token) {
   if (!b) throw new HttpError(404, 'We couldn\'t find that booking.');
   if (!['pending', 'confirmed'].includes(b.status)) throw bad('This booking can no longer be changed.');
   const allowed = new Set();
-  if (b.docs_status === 'reupload') for (const k of String(b.reupload_kinds || '').split(',')) if (DOC_KINDS[k]) allowed.add(k);
+  if (b.docs_status === 'reupload') for (const k of String(b.reupload_kinds || '').split(',')) if (isDocKind(k)) allowed.add(k);
   if (['awaiting', 'mismatch'].includes(b.payment_status)) allowed.add('payment');
   if (!allowed.size) throw bad('Nothing needs uploading for this booking right now.');
 

@@ -1,7 +1,7 @@
 // Rental agreement and consent wording shown on the booking page and stored with every booking.
 // Change TERMS_VERSION whenever the wording changes — each booking records the version and a hash of what it agreed to.
 
-export const TERMS_VERSION = '2026-10-v1';
+export const TERMS_VERSION = '2026-10-v2';
 
 export const AGREEMENT = [
   {
@@ -19,6 +19,7 @@ export const AGREEMENT = [
       'Only I (the named rider) will ride the vehicle. I will carry at most one pillion, and both of us will wear helmets at all times.',
       'I will not ride under the influence of alcohol or drugs, race, perform stunts, ride off-road, carry goods for hire, or sub-let the vehicle.',
       'I will follow traffic rules and the route briefing, avoid the roads Cloud Trails flags as unsafe after dark, and get an Inner Line Permit where one is required.',
+      'If I book more than one vehicle, I am responsible for all of them. Each vehicle is ridden only by the rider named for it, who holds a valid licence and follows this agreement.',
     ],
   },
   {
@@ -48,7 +49,7 @@ export const AGREEMENT = [
 ];
 
 export const CONSENTS = [
-  { id: 'age_licence', text: 'I am 18 or older and hold a valid driving licence for this vehicle.' },
+  { id: 'age_licence', text: 'I am 18 or older and every rider in this booking holds a valid driving licence for their vehicle.' },
   { id: 'agreement', text: 'I have read and agree to the rental agreement above, including damage, fine and fuel charges.' },
   { id: 'helmet', text: 'I and my pillion will wear helmets and ride sober, within traffic rules.' },
   { id: 'deposit', text: 'I understand the refundable deposit is collected at handover and returned after a clean return.' },

@@ -39,7 +39,16 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_booking ON events (booking_id);
 CREATE TABLE IF NOT EXISTS login_attempts (ip TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS booking_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, booking_id INTEGER NOT NULL, vehicle_id TEXT NOT NULL, vehicle_name TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1, day_rate INTEGER NOT NULL DEFAULT 0, rent INTEGER NOT NULL DEFAULT 0, deposit INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_items_booking ON booking_items (booking_id);
+CREATE INDEX IF NOT EXISTS idx_items_vehicle ON booking_items (vehicle_id);
 `;
+
+// Columns added after the first release (SQLite has no "ADD COLUMN IF NOT EXISTS").
+const ADDED_COLUMNS = { bookings: { riders: 'TEXT', vehicle_count: 'INTEGER NOT NULL DEFAULT 1' } };
 
 export const SEED_VEHICLES = [
   { id: 'yamaha-rayzr-125', name: 'Yamaha RayZR 125', category: 'Scooty · Automatic', image: 'images/thumbs/fleet-yamaha-rayzr-125.jpg', day_rate: 700, deposit: 2000, units: 5, sort: 1 },
@@ -86,6 +95,17 @@ export function ensureSchema(env) {
     schemaReady = (async () => {
       const statements = SCHEMA.split(';').map((s) => s.trim()).filter(Boolean);
       await env.DB.batch(statements.map((s) => env.DB.prepare(s)));
+      for (const [table, cols] of Object.entries(ADDED_COLUMNS)) {
+        const { results } = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+        const have = new Set((results || []).map((r) => r.name));
+        for (const [col, type] of Object.entries(cols)) {
+          if (!have.has(col)) await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
+        }
+      }
+      // Bookings made before multi-vehicle support: give each one its single line item.
+      await env.DB.prepare(`INSERT INTO booking_items (booking_id, vehicle_id, vehicle_name, qty, day_rate, rent, deposit)
+        SELECT b.id, b.vehicle_id, b.vehicle_name, 1, 0, b.rent, b.deposit FROM bookings b
+        WHERE NOT EXISTS (SELECT 1 FROM booking_items i WHERE i.booking_id = b.id)`).run();
       const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM vehicles').first();
       if (!row || !row.n) {
         await env.DB.batch(SEED_VEHICLES.map((v) =>
@@ -124,21 +144,31 @@ export const ACTIVE_STATUSES = ['pending', 'confirmed', 'ongoing'];
 /** How many units of a vehicle are booked at any moment between start and end (peak overlap). */
 export async function peakBooked(env, vehicleId, start, end, excludeId = 0) {
   const { results } = await env.DB.prepare(
-    `SELECT start_at, end_at FROM bookings
-      WHERE vehicle_id = ? AND status IN ('pending','confirmed','ongoing') AND id != ?
-        AND start_at < ? AND end_at > ?`).bind(vehicleId, excludeId, end, start).all();
-  const rows = results || [];
+    `SELECT b.start_at, b.end_at, i.qty FROM booking_items i JOIN bookings b ON b.id = i.booking_id
+      WHERE i.vehicle_id = ? AND b.status IN ('pending','confirmed','ongoing') AND b.id != ?
+        AND b.start_at < ? AND b.end_at > ?`).bind(vehicleId, excludeId, end, start).all();
+  return peakOf(results || [], start, end);
+}
+
+/** Highest number of vehicles out at the same moment between start and end (rows: start_at, end_at, qty). */
+export function peakOf(rows, start, end) {
   if (!rows.length) return 0;
-  // Sweep line over the overlapping bookings to find the peak simultaneous count.
   const points = [];
   for (const r of rows) {
-    points.push([r.start_at < start ? start : r.start_at, 1]);
-    points.push([r.end_at > end ? end : r.end_at, -1]);
+    const q = Number(r.qty) || 1;
+    points.push([r.start_at < start ? start : r.start_at, q]);
+    points.push([r.end_at > end ? end : r.end_at, -q]);
   }
+  // Ends sort before starts at the same instant: a vehicle returned at 10:00 can go out again at 10:00.
   points.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]));
   let cur = 0, peak = 0;
   for (const [, d] of points) { cur += d; peak = Math.max(peak, cur); }
   return peak;
+}
+
+export async function bookingItems(env, bookingId) {
+  const { results } = await env.DB.prepare('SELECT vehicle_id, vehicle_name, qty, day_rate, rent, deposit FROM booking_items WHERE booking_id = ? ORDER BY id').bind(bookingId).all();
+  return results || [];
 }
 
 export function nowISO() {

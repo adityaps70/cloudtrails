@@ -1,10 +1,10 @@
 // Admin API (/admin/api/*). Every route except login requires the admin session cookie.
 
-import { getSettings, saveSettings, listVehicles, peakBooked, nowISO, logEvent, DEFAULT_SETTINGS } from './db.js';
+import { getSettings, saveSettings, listVehicles, peakBooked, peakOf, bookingItems, nowISO, logEvent, DEFAULT_SETTINGS } from './db.js';
 import { requireAdmin, login, logoutCookie, adminConfigured } from './auth.js';
 import { getFile, putFile, deleteFile, purgeBookingDocs } from './storage.js';
-import { DOC_KINDS } from './public.js';
-import { quote, nowIST, parseLocal } from '../js/pricing.js';
+import { DOC_KINDS, docLabel, isDocKind } from './public.js';
+import { quote, nowIST, parseLocal, itemsSummary } from '../js/pricing.js';
 import { json, bad, HttpError, str, sniffMime, csvCell } from './util.js';
 
 const STATUSES = ['pending', 'confirmed', 'ongoing', 'completed', 'cancelled', 'rejected'];
@@ -132,7 +132,13 @@ async function bookingDetail(env, id) {
     env.DB.prepare('SELECT id, kind, mime, size, created_at FROM files WHERE booking_id = ? ORDER BY created_at').bind(b.id).all(),
     env.DB.prepare('SELECT at, actor, action, detail FROM events WHERE booking_id = ? ORDER BY id').bind(b.id).all(),
   ]);
-  return json({ booking: strip(b), files: files || [], events: events || [], doc_labels: Object.fromEntries(Object.entries(DOC_KINDS).map(([k, v]) => [k, v.label])) });
+  let riders = [];
+  try { riders = JSON.parse(b.riders || '[]'); } catch {}
+  const kinds = new Set([...Object.keys(DOC_KINDS), ...(files || []).map((f) => f.kind), ...riders.map((_, i) => `rider${i + 1}_licence`)]);
+  return json({
+    booking: strip(b), items: await bookingItems(env, b.id), riders, files: files || [], events: events || [],
+    doc_labels: Object.fromEntries([...kinds].map((k) => [k, docLabel(k)])),
+  });
 }
 
 function int(v) {
@@ -175,7 +181,7 @@ async function bookingAction(env, id, d) {
       break;
     case 'request_reupload': {
       need('pending', 'confirmed');
-      const kinds = (Array.isArray(d.kinds) ? d.kinds : []).filter((k) => DOC_KINDS[k] && k !== 'signature' && k !== 'payment');
+      const kinds = (Array.isArray(d.kinds) ? d.kinds : []).filter((k) => isDocKind(k) && k !== 'signature' && k !== 'payment');
       if (!kinds.length) throw bad('Choose which documents to ask for again.');
       set.docs_status = 'reupload'; set.reupload_kinds = kinds.join(',');
       set.customer_message = msg || 'Please upload clearer copies of the documents listed below.';
@@ -234,15 +240,27 @@ async function bookingAction(env, id, d) {
       need('pending', 'confirmed', 'ongoing');
       const start = String(d.start || b.start_at), end = String(d.end || b.end_at);
       if (!isFinite(parseLocal(start)) || !isFinite(parseLocal(end)) || parseLocal(end) <= parseLocal(start)) throw bad('Check the new dates.');
-      const vehicle = await env.DB.prepare('SELECT * FROM vehicles WHERE id = ?').bind(String(d.vehicle_id || b.vehicle_id)).first();
-      if (!vehicle) throw bad('Unknown vehicle.');
-      const used = await peakBooked(env, vehicle.id, start, end, b.id);
-      if (used >= vehicle.units && !d.force) throw new HttpError(409, `All ${vehicle.units} ${vehicle.name} are booked for part of that time. Tick "override" to save anyway.`);
+      // Vehicles: keep the booked ones, or swap a single-vehicle booking to another model.
+      const current = await bookingItems(env, b.id);
+      const wanted = current.length === 1 && current[0].qty === 1 && d.vehicle_id ? [{ vehicle_id: String(d.vehicle_id), qty: 1 }] : current;
+      const items = [];
+      for (const it of wanted) {
+        const vehicle = await env.DB.prepare('SELECT * FROM vehicles WHERE id = ?').bind(it.vehicle_id).first();
+        if (!vehicle) throw bad('Unknown vehicle.');
+        const used = await peakBooked(env, vehicle.id, start, end, b.id);
+        if (used + it.qty > vehicle.units && !d.force) throw new HttpError(409, `Not enough ${vehicle.name} free for part of that time (${Math.max(0, vehicle.units - used)} of ${vehicle.units}). Tick "override" to save anyway.`);
+        items.push({ vehicle, qty: it.qty });
+      }
       const settings = await getSettings(env);
-      const q = quote({ vehicle, start, end, guide: !!b.guide, delivery: b.handover === 'delivery', collection: b.return_mode === 'collection', settings });
-      Object.assign(set, { start_at: start, end_at: end, days: q.days, vehicle_id: vehicle.id, vehicle_name: vehicle.name,
+      const q = quote({ items, start, end, guide: !!b.guide, delivery: b.handover === 'delivery', collection: b.return_mode === 'collection', settings });
+      Object.assign(set, { start_at: start, end_at: end, days: q.days, vehicle_id: items[0].vehicle.id, vehicle_name: itemsSummary(q.items),
         rent: q.rent, guide_fee: q.guide_fee, delivery_fee: q.delivery_fee, collection_fee: q.collection_fee, total: q.total, deposit: q.deposit });
-      detail = `${vehicle.name}, ${start} → ${end}, total ₹${q.total} (was ₹${b.total})`;
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM booking_items WHERE booking_id = ?').bind(b.id),
+        ...q.items.map((i) => env.DB.prepare('INSERT INTO booking_items (booking_id, vehicle_id, vehicle_name, qty, day_rate, rent, deposit) VALUES (?,?,?,?,?,?,?)')
+          .bind(b.id, i.vehicle_id, i.name, i.qty, i.day_rate, i.rent, i.deposit)),
+      ]);
+      detail = `${itemsSummary(q.items)}, ${start} → ${end}, total ₹${q.total} (was ₹${b.total})`;
       break;
     }
     default:
@@ -340,23 +358,15 @@ async function calendar(env, url) {
   const end = new Date(Date.parse(from) + days * 86400000).toISOString().slice(0, 10);
   const vehicles = await listVehicles(env, { all: true });
   const { results } = await env.DB.prepare(
-    "SELECT vehicle_id, start_at, end_at FROM bookings WHERE status IN ('pending','confirmed','ongoing') AND start_at < ? AND end_at > ?").bind(end, from).all();
+    `SELECT b.id, b.ref, b.name, b.status, b.start_at, b.end_at, i.vehicle_id, i.qty FROM booking_items i JOIN bookings b ON b.id = i.booking_id
+      WHERE b.status IN ('pending','confirmed','ongoing') AND b.start_at < ? AND b.end_at > ? ORDER BY b.start_at`).bind(end, from).all();
   const rows = vehicles.map((v) => {
     const mine = (results || []).filter((r) => r.vehicle_id === v.id);
-    const cells = dates.map((d) => {
-      const ds = d + 'T00:00', de = d + 'T23:59';
-      const pts = [];
-      for (const r of mine) {
-        if (r.start_at < de && r.end_at > ds) { pts.push([r.start_at < ds ? ds : r.start_at, 1]); pts.push([r.end_at > de ? de : r.end_at, -1]); }
-      }
-      pts.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]));
-      let cur = 0, peak = 0;
-      for (const [, x] of pts) { cur += x; peak = Math.max(peak, cur); }
-      return peak;
-    });
-    return { id: v.id, name: v.name, units: v.units, active: v.active, cells };
+    const cells = dates.map((d) => peakOf(mine.filter((r) => r.start_at < d + 'T23:59' && r.end_at > d + 'T00:00'), d + 'T00:00', d + 'T23:59'));
+    const bookings = mine.map((r) => ({ id: r.id, ref: r.ref, name: r.name, status: r.status, start: r.start_at, end: r.end_at, qty: r.qty }));
+    return { id: v.id, name: v.name, units: v.units, active: v.active, image: v.image, cells, bookings };
   });
-  return json({ from, dates, rows });
+  return json({ from, dates, rows, today: nowIST().slice(0, 10) });
 }
 
 async function exportCsv(env, url) {
