@@ -11,7 +11,7 @@ const SMALL = path.resolve('images/pexels-photo-11089921.jpg');
 const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + '.png'), fullPage: true });
 const errors = [];
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
 
 // --- admin: set a UPI ID first
 const adminCtx = await browser.newContext({ viewport: { width: 1360, height: 900 } });
@@ -29,7 +29,7 @@ await admin.waitForTimeout(500);
 await shot(admin, '10-admin-settings');
 
 // --- customer on a phone
-const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, permissions: ['camera'] });
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push('book: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error' && !/cdnjs|fontshare|fonts\.g|ERR_|Failed to load resource/.test(m.text())) errors.push('console: ' + m.text()); });
@@ -71,7 +71,10 @@ await page.click('#bar-next');
 
 // Step 3 → details (try with a bad phone first)
 await page.fill('#name', 'Riya Sharma');
-await page.fill('#dob', '1996-04-12');
+await page.selectOption('.dpick[data-for="dob"] .dp-d', '12');
+await page.selectOption('.dpick[data-for="dob"] .dp-m', '4');
+await page.selectOption('.dpick[data-for="dob"] .dp-y', '1996');
+if (await page.inputValue('#dob') !== '1996-04-12') errors.push('dob picker gave ' + await page.inputValue('#dob'));
 await page.fill('#phone', '12345');
 await page.fill('#address', '12 MG Road, Guwahati, Assam 781001');
 await page.fill('#emergency_name', 'Amit Sharma (brother)');
@@ -85,12 +88,23 @@ await page.click('#bar-next');
 
 // Step 4 → documents
 await page.fill('#licence_no', 'ML05 20190012345');
-await page.fill('#licence_expiry', '2034-06-30');
+await page.selectOption('.dpick[data-for="licence_expiry"] .dp-d', '30');
+await page.selectOption('.dpick[data-for="licence_expiry"] .dp-m', '6');
+await page.selectOption('.dpick[data-for="licence_expiry"] .dp-y', '2034');
 await page.selectOption('#id_type', 'Aadhaar');
 await page.setInputFiles('.up[data-kind="licence_front"] input', IMG);
 await page.setInputFiles('.up[data-kind="licence_back"] input', SMALL);
 await page.setInputFiles('.up[data-kind="id_front"] input', SMALL);
-await page.setInputFiles('.up[data-kind="selfie"] input', SMALL);
+// Selfie with the live camera (Chromium's fake camera)
+await page.click('.up[data-kind="selfie"] .cam-open');
+await page.waitForSelector('#cam-shoot:not([disabled])', { timeout: 10000 });
+await page.waitForTimeout(600);
+await page.screenshot({ path: path.join(OUT, '04a-camera.png') });
+await page.click('#cam-shoot');
+await page.waitForSelector('#cam-review:not([hidden])');
+await page.screenshot({ path: path.join(OUT, '04b-camera-review.png') });
+await page.click('#cam-use');
+await page.waitForSelector('.up[data-kind="selfie"].has-file');
 await page.waitForFunction(() => document.querySelectorAll('.up.has-file').length >= 4, null, { timeout: 15000 });
 // Two other riders (3 vehicles)
 await page.fill('#rider1_name', 'Kabir Sharma');
