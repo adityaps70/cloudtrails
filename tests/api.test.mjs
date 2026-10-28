@@ -509,3 +509,23 @@ test('web push: payload encryption (RFC 8291) round-trips and VAPID header verif
     assert.equal((await (await admin(env, cookie, '/push')).json()).devices.length, 0);
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('admin can permanently delete a booking with its documents', async () => {
+  const env = makeEnv();
+  const cookie = await adminCookie(env);
+  const r0 = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(bookingData()) });
+  const created = await r0.json();
+  const list = await (await admin(env, cookie, '/bookings')).json();
+  const id = list.bookings[0].id;
+  const fileIds = (await env.DB.prepare('SELECT id FROM files WHERE booking_id = ?').bind(id).all()).results.map((f) => f.id);
+  assert.ok(fileIds.length >= 5);
+  let r = await admin(env, cookie, `/bookings/${id}/delete`, { confirm_ref: 'CT-WRONG1' });
+  assert.equal(r.status, 400);
+  r = await admin(env, cookie, `/bookings/${id}/delete`, { confirm_ref: created.ref.toLowerCase() });
+  assert.equal(r.status, 200);
+  assert.equal((await (await admin(env, cookie, '/bookings')).json()).total, 0);
+  for (const t of ['files', 'booking_items', 'events']) assert.equal((await env.DB.prepare(`SELECT COUNT(*) n FROM ${t} WHERE booking_id = ?`).bind(id).first()).n, 0, t);
+  for (const f of fileIds) assert.equal(await env.DOCS.get('f/' + f), null);
+  r = await call(env, `/api/bookings/${created.ref}?t=${created.token}`);
+  assert.equal(r.status, 404);
+});
