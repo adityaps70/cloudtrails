@@ -6,6 +6,7 @@ window.CT_WORKER_URL = 'https://cloudtrails.apsapsaps43.workers.dev';
 
 window.CT_API = (function () {
   var h = location.hostname;
-  var sameOrigin = /\.workers\.dev$/.test(h) || h === 'localhost' || h === '127.0.0.1';
+  // The Worker serves the site itself on cloudtrails.in and workers.dev, so the API is on the same address there.
+  var sameOrigin = /(^|\.)cloudtrails\.in$/.test(h) || /\.workers\.dev$/.test(h) || h === 'localhost' || h === '127.0.0.1';
   return sameOrigin ? '' : String(window.CT_WORKER_URL || '').replace(/\/+$/, '');
 })();
