@@ -626,7 +626,7 @@ async function settings() {
           ${f('upi_id', 'UPI ID', 'placeholder="cloudtrails@okicici"', 'The booking page builds a QR with the exact amount filled in.')}
           ${f('upi_payee', 'Payee name')}
           <div class="f"><label class="lb">Your UPI QR image <span class="muted">(optional, used if no UPI ID or the QR can't be drawn)</span></label>
-            ${s.qr_file_id ? `<img class="qr-prev" src="/api/qr?v=${esc(s.qr_file_id)}" alt="UPI QR">` : ''}
+            ${s.qr_file_id || s.qr_static_path ? `<img class="qr-prev" src="/api/qr?v=${esc(s.qr_file_id || s.qr_static_path)}" alt="UPI QR">` : ''}${!s.qr_file_id && s.qr_static_path ? '<p class="small muted" style="margin:0 0 .5rem">Built-in QR from the website files. Upload a new one to replace it.</p>' : ''}
             <div class="actions"><input type="file" id="qr-file" accept="image/png,image/jpeg,image/webp">${s.qr_file_id ? '<button class="btn sm danger" id="qr-del">Remove</button>' : ''}</div></div>
           <div class="f"><label class="lb" for="s-pay_mode">What customers pay online</label>
             <select class="in" id="s-pay_mode" data-k="pay_mode">
@@ -635,7 +635,7 @@ async function settings() {
               <option value="advance" ${s.pay_mode === 'advance' ? 'selected' : ''}>A fixed advance (rest at handover)</option>
               <option value="none" ${s.pay_mode === 'none' ? 'selected' : ''}>Nothing online (pay at handover)</option></select></div>
           ${f('advance_amount', 'Advance amount (₹)', 'type="number" min="0"', 'Only used with “fixed advance”.')}
-          ${!s.upi_id && !s.qr_file_id ? '<div class="alert warn">Add a UPI ID or QR image — until then customers are told to pay at handover.</div>' : ''}</div>
+          ${!s.upi_id && !s.qr_file_id && !s.qr_static_path ? '<div class="alert warn">Add a UPI ID or QR image — until then customers are told to pay at handover.</div>' : ''}</div>
       </div>
       <div>
         <div class="card"><h2>Pickup &amp; drop</h2>
