@@ -61,6 +61,7 @@ export async function handleAdmin(request, env, url) {
     await logEvent(env, b.id, 'admin', 'docs_purged', `${n} file(s) deleted`);
     return json({ ok: true, deleted: n });
   }
+  if ((mm = path.match(/^\/bookings\/(\d+)\/delete$/)) && m === 'POST') return deleteBooking(env, mm[1], await body(request));
   if ((mm = path.match(/^\/files\/([a-f0-9]{32})$/)) && m === 'GET') return serveFile(env, mm[1], url);
 
   if (path === '/vehicles' && m === 'GET') return json({ vehicles: await listVehicles(env, { all: true }) });
@@ -301,6 +302,21 @@ async function serveFile(env, id, url) {
       'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
     },
   });
+}
+
+/** Permanently delete a booking with all its documents, signature, vehicles and history. */
+async function deleteBooking(env, id, d) {
+  const b = await getBooking(env, id);
+  if (String(d.confirm_ref || '').trim().toUpperCase() !== b.ref) throw bad(`Type ${b.ref} to confirm.`);
+  if (b.status === 'ongoing') throw bad('This vehicle is out on the road. Mark it returned first.');
+  const { results } = await env.DB.prepare('SELECT id FROM files WHERE booking_id = ?').bind(b.id).all();
+  for (const f of results || []) await deleteFile(env, f.id);
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM booking_items WHERE booking_id = ?').bind(b.id),
+    env.DB.prepare('DELETE FROM events WHERE booking_id = ?').bind(b.id),
+    env.DB.prepare('DELETE FROM bookings WHERE id = ?').bind(b.id),
+  ]);
+  return json({ ok: true, deleted: b.ref, files: (results || []).length });
 }
 
 /* ---------------- push notifications ---------------- */
