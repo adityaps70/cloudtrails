@@ -646,6 +646,7 @@ async function fleet() {
     <td><input class="in" data-k="category" value="${esc(v.category || '')}" placeholder="Scooty · Automatic"></td>
     <td><input class="in" data-k="day_rate" type="number" min="0" value="${v.day_rate ?? ''}" style="width:90px"></td>
     <td><input class="in" data-k="week_rate" type="number" min="0" value="${v.week_rate || ''}" placeholder="—" style="width:90px"></td>
+    <td><input class="in" data-k="month_rate" type="number" min="0" value="${v.month_rate || ''}" placeholder="—" style="width:100px"></td>
     <td><input class="in" data-k="deposit" type="number" min="0" value="${v.deposit ?? ''}" style="width:90px"></td>
     <td><input class="in" data-k="units" type="number" min="0" value="${v.units ?? ''}" style="width:70px"></td>
     <td><input class="in" data-k="sort" type="number" value="${v.sort ?? 0}" style="width:60px"></td>
@@ -653,8 +654,8 @@ async function fleet() {
     <td style="text-align:center"><input type="checkbox" data-k="active" ${isNew || v.active ? 'checked' : ''} title="Show on booking page"></td>
     <td><button class="btn sm primary" data-save>${isNew ? 'Add' : 'Save'}</button></td></tr>`;
   view.innerHTML = `
-    <div class="head"><div><h1>Fleet &amp; prices</h1><p class="sub">Bookings of 1–6 days pay the day rate. Bookings of 7 days or more pay the weekly price per day (leave it empty for no weekly price). Units = how many of this model you can rent out at once.</p></div></div>
-    <div class="card"><div class="tbl-wrap"><table class="tbl fleet-tbl"><thead><tr><th>Vehicle</th><th>Name</th><th>Type</th><th>₹ / day</th><th>Weekly ₹ / day</th><th>Deposit</th><th>Units</th><th>Order</th><th>Image</th><th>Live</th><th></th></tr></thead>
+    <div class="head"><div><h1>Fleet &amp; prices</h1><p class="sub">Bookings of 1–6 days pay the day rate. 7+ days pay the weekly price per day, and 30+ days the monthly price (per 30 days, pro-rated after that). Leave either empty to not offer it; the cheapest price that applies is used. Units = how many of this model you can rent out at once.</p></div></div>
+    <div class="card"><div class="tbl-wrap"><table class="tbl fleet-tbl"><thead><tr><th>Vehicle</th><th>Name</th><th>Type</th><th>₹ / day</th><th>Weekly ₹ / day</th><th>Monthly ₹ (30 days)</th><th>Deposit</th><th>Units</th><th>Order</th><th>Image</th><th>Live</th><th></th></tr></thead>
       <tbody>${vehicles.map((v) => row(v)).join('')}${row({}, true)}</tbody></table></div>
       <p class="small muted">Images are paths on the website (e.g. <code>images/fleet-tvs-ntorq-125.png</code>). Untick “Live” to hide a model from the booking page without losing its history.</p></div>`;
   $$('[data-save]').forEach((btn) => btn.addEventListener('click', async () => {
@@ -672,6 +673,7 @@ async function settings() {
   const depOdd = fleetList.filter((v) => String(v.deposit) !== String(s.default_deposit));
   const scooties = fleetList.filter((v) => /^scooty/i.test(v.category || ''));
   const wkOdd = scooties.filter((v) => String(v.week_rate || 0) !== String(s.week_rate_scooty));
+  const moOdd = scooties.filter((v) => String(v.month_rate || 0) !== String(s.month_rate_scooty));
   const bikes = fleetList.filter((v) => !/^scooty/i.test(v.category || ''));
   const f = (k, label, attrs = '', help = '') => `<div class="f"><label class="lb" for="s-${k}">${label}</label><input class="in" id="s-${k}" data-k="${k}" value="${esc(s[k])}" ${attrs}>${help ? `<p class="small muted" style="margin:.3rem 0 0">${help}</p>` : ''}</div>`;
   const bookingUrl = new URL('../book.html', location.href).href;
@@ -705,11 +707,14 @@ async function settings() {
           ${depOdd.length ? `<p class="small muted" style="margin:.2rem 0 0">Different right now: ${depOdd.map((v) => `${esc(v.name)} ${inr(v.deposit)}`).join(' · ')}</p>
           <label class="switch" style="margin-top:.5rem"><input type="checkbox" id="dep-all"> Set these to the amount above too</label>` : ''}</div>
 
-        <div class="card"><h2>Weekly price</h2>
+        <div class="card"><h2>Weekly &amp; monthly price</h2>
           ${f('week_rate_scooty', 'Scooty price per day for 7+ day bookings (₹)', 'type="number" min="0" step="50"', 'Bookings of 1–6 days pay the normal day rate. Saving a new amount updates every scooty. Use 0 for no weekly price.')}
           ${wkOdd.length ? `<p class="small muted" style="margin:.2rem 0 0">Different right now: ${wkOdd.map((v) => `${esc(v.name)} ${v.week_rate ? inr(v.week_rate) : 'none'}`).join(' · ')}</p>
           <label class="switch" style="margin-top:.5rem"><input type="checkbox" id="wk-all"> Set these to the amount above too</label>` : ''}
-          ${bikes.length ? `<p class="small muted" style="margin:.6rem 0 0">Bikes: ${bikes.map((v) => `${esc(v.name)} ${v.week_rate && v.week_rate < v.day_rate ? inr(v.week_rate) + '/day' : 'no weekly price'}`).join(' · ')} — change in <a class="link" href="#/fleet">Fleet &amp; prices</a>.</p>` : ''}</div>
+          ${f('month_rate_scooty', 'Scooty price for 30 days (₹)', 'type="number" min="0" step="500"', 'For bookings of 30 days or more (longer bookings are pro-rated per day). Saving a new amount updates every scooty. Use 0 for no monthly price.')}
+          ${moOdd.length ? `<p class="small muted" style="margin:.2rem 0 0">Different right now: ${moOdd.map((v) => `${esc(v.name)} ${v.month_rate ? inr(v.month_rate) : 'none'}`).join(' · ')}</p>
+          <label class="switch" style="margin-top:.5rem"><input type="checkbox" id="mo-all"> Set these to the amount above too</label>` : ''}
+          ${bikes.length ? `<p class="small muted" style="margin:.6rem 0 0">Bikes: ${bikes.map((v) => `${esc(v.name)} — weekly ${v.week_rate && v.week_rate < v.day_rate ? inr(v.week_rate) + '/day' : 'none'}, monthly ${v.month_rate ? inr(v.month_rate) : 'none'}`).join(' · ')}. Change in <a class="link" href="#/fleet">Fleet &amp; prices</a>.</p>` : ''}</div>
 
         <div class="card"><h2>Pickup &amp; drop</h2>
           <div class="grid2">${f('delivery_fee', 'Doorstep delivery fee (₹)', 'type="number" min="0"')}${f('collection_fee', 'Doorstep collection fee (₹)', 'type="number" min="0"')}</div>
@@ -733,6 +738,7 @@ async function settings() {
     $$('[data-k]').forEach((i) => { d[i.dataset.k] = i.type === 'checkbox' ? (i.checked ? '1' : '0') : i.value.trim(); });
     if ($('#dep-all')?.checked) d.apply_deposit_all = true;
     if ($('#wk-all')?.checked) d.apply_week_all = true;
+    if ($('#mo-all')?.checked) d.apply_month_all = true;
     try { await post('/settings', d); toast('Settings saved'); settings(); } catch (e) { toast(e.message); }
   });
   $('#qr-file').addEventListener('change', async () => {
