@@ -587,3 +587,30 @@ test('return reminders: 4h for short rentals; 1d + 4h for 4–14 days; 5d + 1d +
     assert.equal(await sendReturnReminders(env, at(short, 1)), 0);
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('admin can switch ID documents (e.g. Aadhaar, PAN) on and off for bookings', async () => {
+  const env = makeEnv();
+  const cookie = await adminCookie(env);
+  let cfg = await (await call(env, '/api/config')).json();
+  assert.ok(cfg.id_types.includes('Aadhaar') && cfg.id_types.includes('PAN card'));
+  let r = await admin(env, cookie, '/settings', { id_types_off: 'Aadhaar,PAN card' });
+  assert.equal(r.status, 200);
+  cfg = await (await call(env, '/api/config')).json();
+  assert.deepEqual(cfg.id_types, ['Passport', 'Voter ID', 'Other government ID']);
+  // A booking with a switched-off ID is refused with a clear message
+  r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(bookingData({ id_type: 'Aadhaar' })) });
+  let j = await r.json();
+  assert.equal(r.status, 422);
+  assert.match(j.errors.id_type, /don't accept Aadhaar/);
+  r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(bookingData({ id_type: 'Passport' })) });
+  assert.equal(r.status, 201);
+  // At least one must stay on
+  r = await admin(env, cookie, '/settings', { id_types_off: 'Aadhaar,Passport,Voter ID,PAN card,Other government ID' });
+  assert.equal(r.status, 400);
+  // Switching back on
+  await admin(env, cookie, '/settings', { id_types_off: '' });
+  cfg = await (await call(env, '/api/config')).json();
+  assert.equal(cfg.id_types.length, 5);
+  const s = await (await admin(env, cookie, '/settings')).json();
+  assert.equal(s.id_types.length, 5);
+});
