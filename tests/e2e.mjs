@@ -38,7 +38,7 @@ await page.waitForSelector('#vehicles .veh');
 await page.waitForTimeout(400);
 await shot(page, '01-ride');
 
-// Step 1 → "1 week" preset, then 2 NTORQs + 1 Hunter, with a guide
+// Step 1 → "1 week" preset, then 2 NTORQs + 1 Hunter
 await page.click('#presets .preset[data-days="7"]');
 await page.waitForTimeout(500);
 await shot(page, '01b-week');
@@ -47,7 +47,6 @@ await page.click('.veh[data-id="royal-enfield-hunter-350"] .veh-add');
 await page.waitForTimeout(300);
 const qty = await page.$$eval('.veh .stepper output', (o) => o.map((x) => x.textContent).join(','));
 if (qty !== '2,1') errors.push('expected quantities 2,1, got ' + qty);
-await page.check('#guide');
 await shot(page, '01c-group');
 // Calendar: tap a custom range (start → end) and back to a week
 await page.click('#cal-next');

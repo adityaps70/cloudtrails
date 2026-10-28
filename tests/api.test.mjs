@@ -19,7 +19,7 @@ function call(env, path, init = {}) {
 
 function bookingData(over = {}) {
   return {
-    vehicle_id: 'yamaha-rayzr-125', start: day(1) + 'T10:00', end: day(4) + 'T10:00', guide: false,
+    vehicle_id: 'yamaha-rayzr-125', start: day(1) + 'T10:00', end: day(4) + 'T10:00',
     handover: 'delivery', handover_address: 'Laitumkhrah Main Road, near Don Bosco Square', handover_landmark: 'Opposite the bakery',
     return_mode: 'counter',
     name: 'Riya Sharma', phone: '98765 43210', email: 'riya@example.com', dob: '1996-04-12', address: '12 MG Road, Guwahati, Assam',
@@ -54,17 +54,19 @@ function admin(env, cookie, path, body) {
 
 test('pricing matches the published table', () => {
   assert.equal(rentFor(700, 1), 700);
-  assert.equal(rentFor(700, 3), 1890);
-  assert.equal(rentFor(700, 7), 3850);
-  assert.equal(rentFor(1500, 3), 4050);
-  assert.equal(rentFor(1500, 7), 8250);
-  assert.equal(rentFor(1000, 3), 2700);
-  assert.equal(rentFor(1000, 7), 5500);
+  assert.equal(rentFor(700, 3), 2100);           // no discount under a week
+  assert.equal(rentFor(700, 6, 600), 4200);
+  assert.equal(rentFor(700, 7, 600), 4200);      // weekly price: ₹600/day
+  assert.equal(rentFor(700, 10, 600), 6000);
+  assert.equal(rentFor(700, 7), 4900);           // no weekly price set
+  assert.equal(rentFor(700, 7, 800), 4900);      // weekly price higher than day rate is ignored
+  assert.equal(rentFor(1500, 7, 0), 10500);
   assert.equal(rentalDays('2026-11-01T10:00', '2026-11-02T10:00'), 1);
   assert.equal(rentalDays('2026-11-01T10:00', '2026-11-02T10:59'), 1); // 1-hour grace
   assert.equal(rentalDays('2026-11-01T10:00', '2026-11-02T11:30'), 2);
-  const q = quote({ vehicle: { day_rate: 700, deposit: 2000, name: 'X' }, start: '2026-11-01T10:00', end: '2026-11-04T10:00', guide: true, delivery: true, collection: false, settings: { delivery_fee: 200 } });
-  assert.equal(q.total, 1890 + 2700 + 200);
+  const q = quote({ vehicle: { day_rate: 700, week_rate: 600, deposit: 2000, name: 'X' }, start: '2026-11-01T10:00', end: '2026-11-04T10:00', delivery: true, collection: false, settings: { delivery_fee: 200 } });
+  assert.equal(q.total, 2100 + 200);
+  assert.equal(q.guide_fee, 0);
   assert.equal(q.pay_now, q.total);
   assert.equal(q.deposit, 2000);
 });
@@ -94,7 +96,7 @@ test('full booking → admin workflow → customer status', async () => {
   const created = await r.json();
   assert.equal(r.status, 201, JSON.stringify(created));
   assert.match(created.ref, /^CT-[A-Z0-9]{6}$/);
-  assert.equal(created.total, 1890 + 200);
+  assert.equal(created.total, 2100 + 200);
 
   // Status page
   r = await call(env, `/api/bookings/${created.ref}?t=${created.token}`);
@@ -276,7 +278,7 @@ test('group booking: several vehicles, extra riders, quantity-aware availability
   r = await call(env, '/api/bookings', { method: 'POST', body: bookingForm(data, { rider1_licence: JPG, rider2_licence: JPG }) });
   j = await r.json();
   assert.equal(r.status, 201, JSON.stringify(j));
-  assert.equal(j.total, 2 * 1890 + 4050 + 200);
+  assert.equal(j.total, 2 * 2100 + 4500 + 200);
   assert.equal(j.deposit, 2 * 2000 + 1000);
 
   // Only 1 NTORQ left for overlapping dates
@@ -296,7 +298,7 @@ test('group booking: several vehicles, extra riders, quantity-aware availability
   r = await admin(env, cookie, `/bookings/${id}/action`, { action: 'reschedule', start: day(1) + 'T10:00', end: day(8) + 'T10:00' });
   det = await r.json();
   assert.equal(r.status, 200, JSON.stringify(det));
-  assert.equal(det.booking.total, 2 * 3850 + 8250 + 200); // weekly rate
+  assert.equal(det.booking.total, 2 * 7 * 600 + 7 * 1500 + 200); // scooty weekly price; the Hunter has none
   assert.deepEqual(det.items.map((i) => i.qty), [2, 1]);
 
   // Rider licence can be requested again and re-uploaded by the customer
@@ -317,10 +319,11 @@ test('group booking: several vehicles, extra riders, quantity-aware availability
 
 test('weekly pricing for a group', () => {
   const s = { delivery_fee: 200 };
-  const q = quote({ items: [{ vehicle: { id: 'a', name: 'A', day_rate: 700, deposit: 2000 }, qty: 3 }], start: '2026-11-01T10:00', end: '2026-11-08T10:00', settings: s });
+  const q = quote({ items: [{ vehicle: { id: 'a', name: 'A', day_rate: 700, week_rate: 600, deposit: 2000 }, qty: 3 }], start: '2026-11-01T10:00', end: '2026-11-08T10:00', settings: s });
   assert.equal(q.days, 7);
-  assert.equal(q.rent, 3 * 3850);
-  assert.equal(q.savings, 3 * (4900 - 3850));
+  assert.equal(q.rent, 3 * 4200);
+  assert.equal(q.savings, 3 * (4900 - 4200));
+  assert.match(q.lines[0].label, /weekly price ₹600\/day/);
   assert.equal(q.qty, 3);
 });
 
@@ -346,5 +349,26 @@ test('deposit setting updates every vehicle; one vehicle can still differ', asyn
   assert.equal(vs.find((v) => v.id === 'royal-enfield-hunter-350').deposit, 1500);
   // Bad value refused
   r = await admin(env, cookie, '/settings', { default_deposit: 'abc' });
+  assert.equal(r.status, 400);
+});
+
+test('weekly price setting updates every scooty, not bikes', async () => {
+  const env = makeEnv();
+  const cookie = await adminCookie(env);
+  const list = async () => (await (await admin(env, cookie, '/vehicles')).json()).vehicles;
+  let vs = await list();
+  assert.equal(vs.find((v) => v.id === 'tvs-ntorq-125').week_rate, 600);
+  assert.equal(vs.find((v) => v.id === 'royal-enfield-hunter-350').week_rate, 0);
+  let r = await admin(env, cookie, '/settings', { week_rate_scooty: '550' });
+  assert.equal(r.status, 200);
+  vs = await list();
+  assert.ok(vs.filter((v) => v.category.startsWith('Scooty')).every((v) => v.week_rate === 550));
+  assert.equal(vs.find((v) => v.id === 'royal-enfield-hunter-350').week_rate, 0);
+  // The bike's own weekly price is set in Fleet & prices and used in quotes
+  await admin(env, cookie, '/vehicles', { id: 'royal-enfield-hunter-350', name: 'Royal Enfield Hunter 350', category: 'Bike · 350cc', day_rate: 1500, week_rate: 1200, deposit: 1000, units: 3, sort: 5 });
+  const cfg = await (await call(env, '/api/config')).json();
+  assert.equal(cfg.vehicles.find((v) => v.id === 'royal-enfield-hunter-350').week_rate, 1200);
+  assert.equal(cfg.settings.guide_rate, undefined);
+  r = await admin(env, cookie, '/settings', { week_rate_scooty: 'x' });
   assert.equal(r.status, 400);
 });
