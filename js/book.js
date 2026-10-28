@@ -78,9 +78,12 @@ async function boot() {
   renderVehicles();
   setupHandover();
   $$('.up').forEach(initUpload);
+  setupDatePickers();
+  setupCamera();
   setupTerms();
   setupSignature();
   restoreDraft();
+  $$('.dpick').forEach((el) => el.load());
   bindNav();
   $('#guide-price').textContent = `+${inr(st.guide_rate)} / day`;
   $('#delivery-price').textContent = Number(st.delivery_fee) ? inr(st.delivery_fee) : 'Free';
@@ -433,12 +436,18 @@ function initUpload(el) {
   el.innerHTML = `
     <span class="up-label">${esc(d.label)}${d.required ? '' : ' <i>(optional)</i>'}</span>
     <label class="up-zone" tabindex="0">
-      <input type="file" accept="${kind === 'selfie' ? 'image/*' : 'image/*,application/pdf'}" ${d.camera ? 'capture="user"' : ''} data-kind="${kind}">
+      <input type="file" accept="${kind === 'selfie' ? 'image/*' : 'image/*,application/pdf'}" data-kind="${kind}">
       <span class="up-empty"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0 4 4m-4-4L8 8"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-        <span>${d.camera ? 'Take or upload a photo' : 'Tap to upload'}</span>${d.note && DOCS[kind] ? `<small>${esc(d.note)}</small>` : ''}</span>
+        <span>${d.camera ? 'Or upload a photo' : 'Tap to upload'}</span>${d.note && DOCS[kind] ? `<small>${esc(d.note)}</small>` : ''}</span>
       <span class="up-preview" hidden></span>
     </label>
     <p class="err" data-err="${kind}"></p>`;
+  if (d.camera) {
+    $('.up-label', el).insertAdjacentHTML('afterend', `<button type="button" class="cam-open">
+      <span class="cam-ico"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.6"/></svg></span>
+      <span class="cam-open-txt"><b>Take a selfie now</b><small>Opens your camera — takes 5 seconds</small></span></button>`);
+    $('.cam-open', el).addEventListener('click', () => openCamera(kind));
+  }
   const input = $('input', el);
   input.addEventListener('change', async () => {
     const f = input.files && input.files[0];
@@ -450,6 +459,7 @@ function initUpload(el) {
     el.classList.remove('is-busy');
     if (blob.size > 10 * 1024 * 1024) { setErr(kind, 'That file is larger than 10 MB.'); input.value = ''; return; }
     S.files[kind] = blob;
+    if (kind === 'selfie') S.selfieSource = 'upload';
     renderPreview(el, kind);
     update();
   });
@@ -458,6 +468,8 @@ function initUpload(el) {
 
 function renderPreview(el, kind) {
   const blob = S.files[kind];
+  const camBtn = $('.cam-open b', el);
+  if (camBtn) camBtn.textContent = blob ? 'Retake selfie' : 'Take a selfie now';
   const pv = $('.up-preview', el);
   const empty = $('.up-empty', el);
   if (!blob) { pv.hidden = true; empty.hidden = false; el.classList.remove('has-file'); return; }
@@ -494,6 +506,171 @@ async function compress(file) {
 
 function loadImg(file) {
   return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+}
+
+/* ---------------- date of birth / licence validity pickers ---------------- */
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function setupDatePickers() {
+  $$('.dpick').forEach((el) => {
+    const id = el.dataset.for;
+    const hidden = document.getElementById(id);
+    const y0 = Number(today().slice(0, 4));
+    const years = el.dataset.range === 'dob'
+      ? Array.from({ length: 83 }, (_, i) => y0 - 18 - i)    // 18 to 100 years old
+      : Array.from({ length: 41 }, (_, i) => y0 + i);        // licence valid until: this year onwards
+    el.innerHTML = `
+      <span class="dp-sel"><select class="field dp-d" aria-label="Day"><option value="">Day</option>${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')}</select></span>
+      <span class="dp-sel"><select class="field dp-m" aria-label="Month"><option value="">Month</option>${MON.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('')}</select></span>
+      <span class="dp-sel"><select class="field dp-y" aria-label="Year"><option value="">Year</option>${years.map((y) => `<option value="${y}">${y}</option>`).join('')}</select></span>`;
+    const dS = $('.dp-d', el), mS = $('.dp-m', el), yS = $('.dp-y', el);
+    const note = document.getElementById(id + '-note');
+    const sync = (fromUser) => {
+      const m = Number(mS.value), y = Number(yS.value);
+      const maxD = m ? new Date(Date.UTC(y || 2000, m, 0)).getUTCDate() : 31;
+      [...dS.options].forEach((o) => { if (o.value) o.disabled = Number(o.value) > maxD; });
+      if (Number(dS.value) > maxD) dS.value = String(maxD);
+      const d = Number(dS.value);
+      const iso = d && m && y ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : '';
+      hidden.value = iso;
+      $$('select', el).forEach((x) => x.classList.toggle('is-set', Boolean(x.value)));
+      if (note) note.textContent = iso ? describe(el.dataset.range, iso) : '';
+      if (fromUser) { setErr(id, ''); saveDraft(); update(); }
+    };
+    $$('select', el).forEach((x) => x.addEventListener('change', (e) => { e.stopPropagation(); sync(true); }));
+    el.load = () => {
+      const v = hidden.value;
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+      if (m) {
+        if (![...yS.options].some((o) => o.value === String(Number(m[1])))) yS.insertAdjacentHTML('beforeend', `<option value="${Number(m[1])}">${Number(m[1])}</option>`);
+        yS.value = String(Number(m[1])); mS.value = String(Number(m[2])); dS.value = String(Number(m[3]));
+      }
+      sync(false);
+    };
+  });
+}
+
+function describe(range, iso) {
+  const t = today();
+  if (range === 'dob') {
+    const age = Number(t.slice(0, 4)) - Number(iso.slice(0, 4)) - (t.slice(5) < iso.slice(5) ? 1 : 0);
+    return age >= 18 ? `${age} years old` : '';
+  }
+  if (iso < t) return 'This licence has expired';
+  const yrs = Math.floor(daysBetween(t, iso) / 365);
+  return yrs >= 1 ? `Valid for about ${yrs} more year${yrs > 1 ? 's' : ''}` : 'Valid for less than a year';
+}
+
+/* ---------------- live camera selfie ---------------- */
+const CAM = { stream: null, facing: 'user', kind: 'selfie', blob: null };
+
+function setupCamera() {
+  $('#cam-close').addEventListener('click', closeCamera);
+  $('#cam').addEventListener('click', (e) => { if (e.target.id === 'cam') closeCamera(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#cam').hidden) closeCamera(); });
+  $('#cam-shoot').addEventListener('click', snap);
+  $('#cam-retake').addEventListener('click', () => { CAM.blob = null; showLive(true); });
+  $('#cam-use').addEventListener('click', usePhoto);
+  $('#cam-flip').addEventListener('click', async () => { CAM.facing = CAM.facing === 'user' ? 'environment' : 'user'; await startStream(); });
+  $('#cam-fallback').addEventListener('click', () => {
+    closeCamera();
+    const input = $(`.up[data-kind="${CAM.kind}"] input[type=file]`);
+    input.setAttribute('capture', 'user');   // phones open their own camera app
+    input.click();
+    setTimeout(() => input.removeAttribute('capture'), 1000);
+  });
+}
+
+async function openCamera(kind) {
+  CAM.kind = kind; CAM.facing = 'user'; CAM.blob = null;
+  $('#cam').hidden = false;
+  document.body.classList.add('no-scroll');
+  showLive(false);
+  if (!navigator.mediaDevices?.getUserMedia) return camError('This browser can\'t open the camera here.');
+  await startStream();
+}
+
+async function startStream() {
+  stopStream();
+  $('#cam-msg').hidden = true;
+  $('#cam-shoot').disabled = true;
+  try {
+    CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: CAM.facing, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+    const v = $('#cam-video');
+    v.srcObject = CAM.stream;
+    v.classList.toggle('mirror', CAM.facing === 'user');
+    await v.play().catch(() => {});
+    $('#cam-shoot').disabled = false;
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+    $('#cam-flip').hidden = cams.length < 2;
+  } catch (e) {
+    const name = e && e.name;
+    camError(name === 'NotAllowedError' || name === 'SecurityError'
+      ? 'Camera access was blocked. Allow the camera for this site in your browser settings, or upload a photo instead.'
+      : name === 'NotFoundError' || name === 'OverconstrainedError' ? 'No camera found on this device.' : 'We couldn\'t start the camera.');
+  }
+}
+
+function camError(msg) {
+  $('#cam-msg-text').textContent = msg;
+  $('#cam-msg').hidden = false;
+  $('#cam-shoot').disabled = true;
+}
+
+function stopStream() {
+  if (CAM.stream) CAM.stream.getTracks().forEach((t) => t.stop());
+  CAM.stream = null;
+}
+
+function showLive(restart) {
+  $('#cam-video').hidden = false;
+  $('#cam-still').hidden = true;
+  $('#cam-guide').hidden = false;
+  $('#cam-live').hidden = false;
+  $('#cam-review').hidden = true;
+  $('#cam-tip').textContent = 'Fit your face in the oval · good light · no sunglasses or helmet';
+  if (restart && !CAM.stream) startStream();
+}
+
+async function snap() {
+  const v = $('#cam-video');
+  if (!v.videoWidth) return;
+  const scale = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(v.videoWidth * scale); c.height = Math.round(v.videoHeight * scale);
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);   // saved the right way round (not mirrored)
+  const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.9));
+  if (!blob) return camError('That didn\'t work — try again.');
+  CAM.blob = new File([blob], 'selfie.jpg', { type: 'image/jpeg' });
+  const f = $('#cam-flash');
+  f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  const img = $('#cam-still');
+  img.src = URL.createObjectURL(CAM.blob);
+  img.classList.toggle('mirror', CAM.facing === 'user');
+  img.hidden = false;
+  v.hidden = true;
+  $('#cam-guide').hidden = true;
+  $('#cam-live').hidden = true;
+  $('#cam-review').hidden = false;
+  $('#cam-tip').textContent = 'Is your face clear and well lit?';
+  stopStream();
+}
+
+function usePhoto() {
+  if (!CAM.blob) return;
+  S.files[CAM.kind] = CAM.blob;
+  if (CAM.kind === 'selfie') S.selfieSource = 'camera';
+  const el = $(`.up[data-kind="${CAM.kind}"]`);
+  setErr(CAM.kind, '');
+  renderPreview(el, CAM.kind);
+  closeCamera();
+  update();
+}
+
+function closeCamera() {
+  stopStream();
+  $('#cam').hidden = true;
+  document.body.classList.remove('no-scroll');
 }
 
 /* ---------------- terms & signature ---------------- */
@@ -679,6 +856,8 @@ function setErr(k, msg) {
   if (input) input.classList.toggle('invalid', Boolean(msg));
   const up = $(`.up[data-kind="${k}"]`);
   if (up) up.classList.toggle('invalid', Boolean(msg));
+  const dp = $(`.dpick[data-for="${k}"]`);
+  if (dp) dp.classList.toggle('invalid', Boolean(msg));
 }
 
 function val(id) { return ($('#' + id)?.value || '').trim(); }
@@ -879,6 +1058,7 @@ async function submit() {
     emergency_name: val('emergency_name'), emergency_phone: val('emergency_phone'), pillion_name: val('pillion_name'), notes: val('notes'),
     licence_no: val('licence_no'), licence_expiry: val('licence_expiry'), id_type: val('id_type'),
     upi_utr: val('upi_utr'), consents, consent_name: val('consent_name'), terms_version: S.cfg.terms.version,
+    selfie_source: S.selfieSource === 'camera' ? 'camera' : 'upload',
   };
   const fd = new FormData();
   fd.set('data', JSON.stringify(data));
