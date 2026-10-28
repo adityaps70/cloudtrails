@@ -277,7 +277,7 @@ test('group booking: several vehicles, extra riders, quantity-aware availability
   j = await r.json();
   assert.equal(r.status, 201, JSON.stringify(j));
   assert.equal(j.total, 2 * 1890 + 4050 + 200);
-  assert.equal(j.deposit, 2 * 2000 + 5000);
+  assert.equal(j.deposit, 2 * 2000 + 1000);
 
   // Only 1 NTORQ left for overlapping dates
   let av = await (await call(env, `/api/availability?start=${data.start}&end=${data.end}`)).json();
@@ -322,4 +322,29 @@ test('weekly pricing for a group', () => {
   assert.equal(q.rent, 3 * 3850);
   assert.equal(q.savings, 3 * (4900 - 3850));
   assert.equal(q.qty, 3);
+});
+
+test('deposit setting updates every vehicle; one vehicle can still differ', async () => {
+  const env = makeEnv();
+  const cookie = await adminCookie(env);
+  let r;
+  let vs = (await (await admin(env, cookie, '/vehicles')).json()).vehicles;
+  assert.ok(vs.every((v) => v.deposit === 1000));
+  // Change the deposit for everyone
+  r = await admin(env, cookie, '/settings', { default_deposit: '1500' });
+  assert.equal(r.status, 200);
+  vs = (await (await admin(env, cookie, '/vehicles')).json()).vehicles;
+  assert.ok(vs.every((v) => v.deposit === 1500));
+  // One vehicle different; saving other settings leaves it alone
+  await admin(env, cookie, '/vehicles', { id: 'royal-enfield-hunter-350', name: 'Royal Enfield Hunter 350', day_rate: 1500, deposit: 3000, units: 3, sort: 5 });
+  await admin(env, cookie, '/settings', { default_deposit: '1500', delivery_fee: '200' });
+  vs = (await (await admin(env, cookie, '/vehicles')).json()).vehicles;
+  assert.equal(vs.find((v) => v.id === 'royal-enfield-hunter-350').deposit, 3000);
+  // ...unless asked to apply to all
+  await admin(env, cookie, '/settings', { default_deposit: '1500', apply_deposit_all: true });
+  vs = (await (await admin(env, cookie, '/vehicles')).json()).vehicles;
+  assert.equal(vs.find((v) => v.id === 'royal-enfield-hunter-350').deposit, 1500);
+  // Bad value refused
+  r = await admin(env, cookie, '/settings', { default_deposit: 'abc' });
+  assert.equal(r.status, 400);
 });
