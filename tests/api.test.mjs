@@ -61,6 +61,10 @@ test('pricing matches the published table', () => {
   assert.equal(rentFor(700, 7), 4900);           // no weekly price set
   assert.equal(rentFor(700, 7, 800), 4900);      // weekly price higher than day rate is ignored
   assert.equal(rentFor(1500, 7, 0), 10500);
+  assert.equal(rentFor(700, 30, 600, 15000), 15000);   // monthly price
+  assert.equal(rentFor(700, 45, 600, 15000), 22500);   // pro-rated after 30 days
+  assert.equal(rentFor(700, 29, 600, 15000), 17400);   // under 30 days: weekly price
+  assert.equal(rentFor(700, 30, 600, 0), 18000);       // no monthly price set
   assert.equal(rentalDays('2026-11-01T10:00', '2026-11-02T10:00'), 1);
   assert.equal(rentalDays('2026-11-01T10:00', '2026-11-02T10:59'), 1); // 1-hour grace
   assert.equal(rentalDays('2026-11-01T10:00', '2026-11-02T11:30'), 2);
@@ -371,4 +375,27 @@ test('weekly price setting updates every scooty, not bikes', async () => {
   assert.equal(cfg.settings.guide_rate, undefined);
   r = await admin(env, cookie, '/settings', { week_rate_scooty: 'x' });
   assert.equal(r.status, 400);
+});
+
+test('monthly price: setting updates scooties; 30-day booking priced monthly', async () => {
+  const env = makeEnv();
+  const cookie = await adminCookie(env);
+  const list = async () => (await (await admin(env, cookie, '/vehicles')).json()).vehicles;
+  let vs = await list();
+  assert.equal(vs.find((v) => v.id === 'tvs-ntorq-125').month_rate, 15000);
+  assert.equal(vs.find((v) => v.id === 'royal-enfield-hunter-350').month_rate, 0);
+  await admin(env, cookie, '/settings', { month_rate_scooty: '14000' });
+  vs = await list();
+  assert.ok(vs.filter((v) => v.category.startsWith('Scooty')).every((v) => v.month_rate === 14000));
+  // Saving a vehicle from an older form (no month_rate field) keeps its monthly price
+  await admin(env, cookie, '/vehicles', { id: 'tvs-ntorq-125', name: 'TVS NTORQ 125', category: 'Scooty · Sporty', day_rate: 700, deposit: 1000, units: 5, sort: 4 });
+  vs = await list();
+  assert.equal(vs.find((v) => v.id === 'tvs-ntorq-125').month_rate, 14000);
+  assert.equal(vs.find((v) => v.id === 'tvs-ntorq-125').week_rate, 600);
+  const cfg = await (await call(env, '/api/config')).json();
+  const v = cfg.vehicles.find((x) => x.id === 'tvs-ntorq-125');
+  const q = quote({ items: [{ vehicle: v, qty: 2 }], start: '2026-11-01T10:00', end: '2026-12-01T10:00', settings: cfg.settings });
+  assert.equal(q.days, 30);
+  assert.equal(q.rent, 2 * 14000);
+  assert.match(q.lines[0].label, /monthly price/);
 });
